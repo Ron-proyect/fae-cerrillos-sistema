@@ -19,7 +19,7 @@ import extra_streamlit_components as stx
 # --- CONEXIÓN A SUPABASE (VERSIÓN ÚNICA Y LIMPIA) ---
 # ==============================================================================
 # Usamos la conexión directa que garantizó el funcionamiento previo
-URL_SUPABASE = "https://bnypthionhjtcllbanl.supabase.co".strip()
+URL_SUPABASE = "https://bnypthionhjtucllbanl.supabase.co/rest/v1".strip()
 KEY_SUPABASE = "sb_publishable_LOMUlOI8h9-ovNd9zNW_dw_g4_Nqhwv".strip()
 
 supabase: Client = create_client(URL_SUPABASE, KEY_SUPABASE)
