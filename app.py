@@ -347,14 +347,19 @@ def generar_pdf_visual(prof_nombre, df_resumen, data_grafico_barras, cumple_coun
     for i, t in enumerate(titulos): pdf.cell(anchos[i], 10, t, border=1, fill=True, align="C")
     pdf.ln(); pdf.set_font("helvetica", "", 7)
     for _, row in df_resumen.iterrows():
-        pdf.cell(anchos[0], 8, str(row['Caso'])[:28], border=1)
-        pdf.cell(anchos[1], 8, str(row['Próximo Informe']), border=1, align="C")
-        pdf.cell(anchos[2], 8, str(row['F. Límite (Teo)']), border=1, align="C")
-        pdf.cell(anchos[3], 8, str(row['Estado (Ingreso)']).replace("🔴 ","").replace("🟠 ","").replace("⚪ ",""), border=1, align="C")
-        pdf.cell(anchos[4], 8, str(row['Venc. (3m)']), border=1, align="C")
-        pdf.cell(anchos[5], 8, str(row['Estado (Operativo)']).replace("🔴 ","").replace("🟢 ",""), border=1, align="C")
-        pdf.cell(anchos[6], 8, str(row['Meses']), border=1, align="C")
-        pdf.ln()
+            # Limpieza profunda de emojis para evitar errores en la nube
+            caso_limpio = "".join(c for c in str(row['Caso']) if ord(c) < 128)[:28]
+            est_ingreso = str(row['Estado (Ingreso)']).replace("🔴","").replace("🟠","").replace("⚪","").strip()
+            est_operativo = str(row['Estado (Operativo)']).replace("🔴","").replace("🟢","").strip()
+            
+            pdf.cell(anchos[0], 8, caso_limpio, border=1)
+            pdf.cell(anchos[1], 8, str(row['Próximo Informe']), border=1, align="C")
+            pdf.cell(anchos[2], 8, str(row['F. Límite (Teo)']), border=1, align="C")
+            pdf.cell(anchos[3], 8, est_ingreso, border=1, align="C")
+            pdf.cell(anchos[4], 8, str(row['Venc. (3m)']), border=1, align="C")
+            pdf.cell(anchos[5], 8, est_operativo, border=1, align="C")
+            pdf.cell(anchos[6], 8, str(row['Meses']), border=1, align="C")
+            pdf.ln()
     return pdf.output()
 
 def generar_pdf_cronograma(caso_nombre, f_ingreso, df_hitos):
