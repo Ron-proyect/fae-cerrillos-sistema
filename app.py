@@ -20,7 +20,7 @@ import extra_streamlit_components as stx
 # ==============================================================================
 # Usamos la conexión directa que garantizó el funcionamiento previo
 URL_SUPABASE = "https://bnypthionhjtcllbanl.supabase.co".strip()
-KEY_SUPABASE = "sb_publishable_LOMUlOl8h9-ovNd9zNW_dw_g4_Nqhwv".strip()
+KEY_SUPABASE = "sb_publishable_LOMUlOI8h9-ovNd9zNW_dw_g4_Nqhwv".strip()
 
 supabase: Client = create_client(URL_SUPABASE, KEY_SUPABASE)
 
