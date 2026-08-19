@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Reporte FAE - Fundación DEM</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <style>
+        :root { 
+            --azul: #1a1a1a; 
+            --verde: #b5d333; 
+            --rojo: #e74c3c; 
+            --naranja: #f39c12; 
+            --purpura: #8e44ad; 
+            --gris-bg: #f8f9fa; 
+            --fuente-base: 'Segoe UI', Tahoma, sans-serif;
+        }
+
+        body { font-family: var(--fuente-base); background: #444; padding: 20px; margin: 0; }
+        
+        .no-print { background: white; padding: 25px; border-radius: 12px; max-width: 800px; margin: 0 auto 30px; text-align: center; border-top: 10px solid var(--verde); }
+        
+        #reporte-pdf-container { width: 800px; margin: 0 auto; }
+
+        .seccion-dupla { 
+            background: white; width: 210mm; min-height: 290mm; padding: 12mm 10mm; 
+            margin: 0 auto 20px auto; box-sizing: border-box; 
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            page-break-before: always; 
+            position: relative;
+            display: block;
+        }
+
+        .seccion-dupla:first-child { page-break-before: avoid; }
+
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--verde); padding-bottom: 5px; margin-bottom: 8px; font-size: 10px; }
+        
+        .dupla-header { background: #f0f4f8; border-left: 6px solid var(--azul); padding: 10px; margin: 10px 0; display: flex; justify-content: space-between; align-items: center; }
+        .dupla-header h2 { margin: 0; font-size: 14px; color: var(--azul); text-transform: uppercase; border: none; background: none; padding: 0; font-weight: bold; }
+        
+        .kpi-bar { display: flex; gap: 15px; }
+        .kpi-item { background: white; padding: 5px 12px; border-radius: 6px; border: 1px solid #ddd; text-align: center; box-shadow: 1px 1px 3px rgba(0,0,0,0.05); }
+        .kpi-val { display: block; font-size: 12px; font-weight: bold; color: var(--azul); }
+        .kpi-lab { font-size: 8px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        .tabla-titulo { font-size: 9px; font-weight: bold; color: #444; margin: 10px 0 5px 0; text-transform: uppercase; border-left: 3px solid var(--verde); padding-left: 5px; }
+        table { width: 100%; border-collapse: collapse; font-size: 8px; table-layout: fixed; margin-bottom: 10px; }
+        th, td { border: 1px solid #bbb; text-align: center; overflow: hidden; padding: 1px 0; font-family: var(--fuente-base); }
+        th { background: #eee; height: 14px; font-size: 7px; font-weight: bold; }
+        
+        .col-nna { width: 130px; text-align: left !important; padding-left: 5px; font-weight: bold; white-space: normal; font-size: 7px; line-height: 8px; }
+        
+        .celda-activa { background: #eef9bf !important; color: var(--azul); font-weight: bold; }
+        .celda-registro { background: #e3f2fd !important; color: #1976d2; font-weight: bold; }
+
+        .alert-box-red { background: #fff5f5; border: 1px solid #feb2b2; border-radius: 6px; padding: 10px; margin-bottom: 10px; font-size: 10px; page-break-inside: avoid; }
+        .alert-box-red h4 { margin: 0 0 5px 0; color: #c53030; text-transform: uppercase; font-size: 11px; font-weight: bold; border-bottom: 1px solid #feb2b2; padding-bottom: 2px; }
+        
+        .alert-box-orange { background: #fffaf0; border: 1px solid #fbd38d; border-radius: 6px; padding: 10px; margin-bottom: 15px; font-size: 10px; page-break-inside: avoid; }
+        .alert-box-orange h4 { margin: 0 0 5px 0; color: #744210; text-transform: uppercase; font-size: 11px; font-weight: bold; border-bottom: 1px solid #fbd38d; padding-bottom: 2px; }
+
+        .alert-list { display: block; }
+        .alert-item { font-size: 9.5px; margin-bottom: 2px; }
+
+        .chart-full-width, .charts-half-grid, .desfase-seccion { page-break-inside: avoid; margin-top: 15px; }
+        
+        .chart-full-width { width: 85%; height: 180px; background: #fafafa; border: 1px solid #eee; padding: 10px; border-radius: 8px; position: relative; margin: 0 auto 20px auto; }
+        .charts-half-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 85%; margin: 15px auto; }
+        .chart-half-width { height: 160px; background: #fafafa; border: 1px solid #eee; padding: 10px; border-radius: 8px; position: relative; }
+        
+        h3 { font-size: 10px; margin: 0 0 8px 0; text-align: center; color: #555; text-transform: uppercase; border-bottom: 1px solid #eee; padding-bottom: 3px; font-weight: bold; }
+
+        .desfase-seccion { background: #fdfdfd; border: 1px solid #ddd; border-radius: 8px; padding: 12px; width: 85%; margin: 10px auto; }
+        .desfase-titulo { font-size: 10px; font-weight: bold; color: var(--azul); text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
+        .desfase-grid { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
+        .badge-desfase { background: transparent; color: var(--azul); padding: 5px 15px; border-radius: 20px; font-size: 11px; font-weight: bold; border: 1.5px solid var(--verde); }
+
+        button { padding: 10px 20px; font-size: 14px; cursor: pointer; border-radius: 8px; border: none; font-weight: bold; margin: 5px; background: var(--azul); color: white; transition: 0.3s; }
+        .btn-green { background: var(--verde); color: var(--azul); }
+        
+        .btn-download-item { 
+            background: #4a4a4a; 
+            font-size: 11px; 
+            padding: 10px 20px; 
+            display: block; 
+            margin: 20px auto 0 auto; 
+            border-radius: 12px;
+            border-top: 4px solid var(--verde);
+        }
+        button:hover { opacity: 0.8; }
+
+        @media print { .no-print { display: none !important; } .seccion-dupla { box-shadow: none; margin: 0; width: 100%; border:none; } #reporte-pdf-container { width: 100%; } }
+    </style>
+</head>
+<body>
+
+    <div class="no-print">
+        <h1>📊 Analítica FAE: Reporte Institucional</h1>
+        <input type="file" id="inputExcel" accept=".xlsx, .xls">
+        <br><br>
+        <button onclick="procesarArchivo()">GENERAR REPORTE</button>
+        <button class="btn-green" onclick="exportarPDFSeparados()">GUARDAR TODOS LOS PDF (AUTOMÁTICO)</button>
+    </div>
+
+    <div id="reporte-pdf-container">
+        <div id="contenedor-reporte"></div>
+    </div>
+
+    <script>
+        Chart.register(ChartDataLabels);
+
+        const DUPLAS_INFO = {
+            "TIARE - FRANCISCA": { p1: "TIARE", p2: "FRANCISCA", keys: ["TIARE", "RIQUELME", "FRANCISCA", "SALAZAR"] },
+            "MARIA - MARCELO": { p1: "MARIA", p2: "MARCELO", keys: ["MARIA", "CORREA", "MARCELO", "HUENTO"] },
+            "SOLANGE - FRANCISCO": { p1: "SOLANGE", p2: "FRANCISCO", keys: ["SOLANGE", "ALEGRIA", "ALEGRÍA", "FRANCISCO", "CARVAJAL"] },
+            "TAMARA - LAURA": { p1: "TAMARA", p2: "LAURA", keys: ["TAMARA", "VILLEGAS", "LAURA", "ARANCIBIA"] },
+            "MAIDA - VALERIA": { p1: "MAIDA", p2: "VALERIA", keys: ["MAIDA", "MUÑOZ", "VALERIA", "ORELLANA", "CONSTANZO"] },
+            "DANIELA - PAULA RITA": { p1: "DANIELA", p2: "PAULA RITA", keys: ["DANIELA", "IZQUIERDO", "PAULA RITA", "LEYTON"] },
+            "PAULA - BRUNO": { p1: "PAULA", p2: "BRUNO", keys: ["BRUNO", "ANDRE", "ANDRÉ", "PAULA ANDREA", "AZOCAR", "AZÓCAR", "PAULA"] },
+            "ALAN - DUPLA": { p1: "ALAN", p2: "S/N", keys: ["ALAN"] }
+        };
+
+        const EVENTOS_VISITA = [
+            "VISITA EFECTIVA EN DOMICILIO PARA MONITOREO DE BIENESTAR DEL NNA EN LA FAMILIA DE ACOGIDA",
+            "VISITA EFECTIVA EN DOMICILIO A FAMILIA/ADULTO RELACIONADO PARA CONSTATACIÓN DE CONDICIONES DE PROTECCIÓN DEL NNA",
+            "ENTREVISTA EFECTIVA EN DOMICILIO A FAMILIA DE ORIGEN Y/O ADULTO RELACIONADO, CON FINES DIAGNÓSTICOS",
+            "VISITA FALLIDA EN DOMICILIO A FAMILIA/ADULTO RELACIONADO PARA CONSTATACIÓN DE CONDICIONES DE PROTECCIÓN DEL NNA",
+            "VISITA FALLIDA EN DOMICILIO PARA MONITOREO DE BIENESTAR DEL NNA EN LA FAMILIA DE ACOGIDA"
+        ];
+
+        const NOMBRES_MESES = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
+
+        function getVal(obj, keyName) {
+            const keys = Object.keys(obj);
+            const found = keys.find(k => k.toLowerCase().replace(/_/g, '') === keyName.toLowerCase());
+            return found ? obj[found] : null;
+        }
+
+        function identificarDupla(nombrePro) {
+            if(!nombrePro) return { nombre: "OTROS", integrante: "DESCONOCIDO" };
+            let nombreNormalizado = nombrePro.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            for (let d in DUPLAS_INFO) {
+                if (DUPLAS_INFO[d].keys.some(k => nombreNormalizado.includes(k.normalize("NFD").replace(/[\u0300-\u036f]/g, "")))) {
+                    let p1_norm = DUPLAS_INFO[d].p1.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                    let integrante = nombreNormalizado.includes(p1_norm) ? DUPLAS_INFO[d].p1 : DUPLAS_INFO[d].p2;
+                    return { nombre: d, integrante: integrante };
+                }
+            }
+            return { nombre: "OTROS", integrante: "OTROS" };
+        }
+
+        function obtenerFechaCompleta(f) {
+            if (!f) return null;
+            let dObj = null;
+            if (f instanceof Date) {
+                dObj = new Date(f.getTime() + f.getTimezoneOffset() * 60000);
+            } else if (typeof f === 'number') {
+                dObj = new Date(Math.round((f - 25569) * 86400000));
+                dObj = new Date(dObj.getTime() + dObj.getTimezoneOffset() * 60000);
+            } else {
+                const p = f.toString().split(/[\/\- ]/);
+                let d = parseInt(p[0]); let m = parseInt(p[1]); let a = parseInt(p[2]);
+                if (d > 31) { a = d; d = parseInt(p[2]); }
+                dObj = new Date(a, m - 1, d);
+            }
+            if (dObj && !isNaN(dObj.getTime())) {
+                dObj.setHours(0, 0, 0, 0);
+                return dObj;
+            }
+            return null;
+        }
+
+        function calcularDiasLaborales(inicio, fin) {
+            if (!inicio || !fin) return 0;
+            if (fin < inicio) return 0;
+            let count = 0;
+            let actual = new Date(inicio);
+            while (actual < fin) {
+                actual.setDate(actual.getDate() + 1);
+                let d = actual.getDay();
+                if (d !== 0 && d !== 6) count++;
+            }
+            return count;
+        }
+
+        function procesarArchivo() {
+            const input = document.getElementById('inputExcel');
+            if (!input.files[0]) return alert("Sube el archivo Excel.");
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const workbook = XLSX.read(new Uint8Array(e.target.result), {type: 'array', cellDates: true});
+                const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+                renderizarReporte(json);
+            };
+            reader.readAsArrayBuffer(input.files[0]);
+        }
+
+        function renderizarReporte(datos) {
+            let info = {};
+            const conteoMeses = {};
+            
+            datos.forEach(f => {
+                const fEv = obtenerFechaCompleta(getVal(f, 'FechaEvento') || getVal(f, 'fecha_evento'));
+                if (fEv) {
+                    const m = fEv.getMonth();
+                    conteoMeses[m] = (conteoMeses[m] || 0) + 1;
+                }
+            });
+            
+            const mesMasFrecuente = Object.keys(conteoMeses).reduce((a, b) => conteoMeses[a] > conteoMeses[b] ? a : b, null);
+            const nombreMesDetectado = NOMBRES_MESES[mesMasFrecuente];
+
+            datos.forEach(f => {
+                const proNombre = `${getVal(f, 'Tnombres') || ''} ${getVal(f, 'Tpaterno') || ''}`;
+                const resDupla = identificarDupla(proNombre);
+                const nna = `${getVal(f, 'apellidopaterno') || getVal(f, 'apellido_paterno') || ''} ${getVal(f, 'nombres') || ''}`.trim().toUpperCase();
+                
+                const fEv = obtenerFechaCompleta(getVal(f, 'FechaEvento') || getVal(f, 'fecha_evento'));
+                const fAct = obtenerFechaCompleta(getVal(f, 'FechaActualizacion') || getVal(f, 'fecha_actualizacion'));
+                const tipo = (getVal(f, 'TipoEvento') || getVal(f, 'tipo_evento') || "").trim().toUpperCase();
+                
+                if (!info[resDupla.nombre]) info[resDupla.nombre] = { nnaData: {}, individual: {}, totalDupla: 0, desfase: {} };
+                let dData = info[resDupla.nombre];
+
+                if (nna && !dData.nnaData[nna]) dData.nnaData[nna] = { dias: {}, diasRegistro: {}, total: 0, visitas: 0, profAtencion: {} };
+                
+                // Procesar Fecha de Evento
+                if (nna && fEv && fEv.getMonth() == mesMasFrecuente) {
+                    const dia = fEv.getDate();
+                    dData.nnaData[nna].dias[dia] = (dData.nnaData[nna].dias[dia] || 0) + 1;
+                    dData.nnaData[nna].total++;
+                    dData.totalDupla++;
+                    if (EVENTOS_VISITA.includes(tipo)) dData.nnaData[nna].visitas++;
+                    dData.nnaData[nna].profAtencion[resDupla.integrante] = true;
+                    dData.individual[resDupla.integrante] = (dData.individual[resDupla.integrante] || 0) + 1;
+                }
+
+                // Procesar Fecha de Registro (Actualización)
+                if (nna && fAct && fAct.getMonth() == mesMasFrecuente) {
+                    const diaAct = fAct.getDate();
+                    dData.nnaData[nna].diasRegistro[diaAct] = (dData.nnaData[nna].diasRegistro[diaAct] || 0) + 1;
+                }
+
+                // Calcular Desfase
+                if (nna && fEv && fAct) {
+                    const diasLab = calcularDiasLaborales(fEv, fAct);
+                    if (!dData.desfase[resDupla.integrante]) dData.desfase[resDupla.integrante] = { suma: 0, cant: 0 };
+                    dData.desfase[resDupla.integrante].suma += diasLab;
+                    dData.desfase[resDupla.integrante].cant++;
+                }
+            });
+
+            const contenedor = document.getElementById('contenedor-reporte');
+            contenedor.innerHTML = "";
+
+            Object.keys(info).sort().forEach((dupla, idx) => {
+                const dData = info[dupla];
+                const nnas = Object.keys(dData.nnaData).sort();
+                const promedioInt = nnas.length > 0 ? (dData.totalDupla / nnas.length).toFixed(1) : 0;
+                
+                let tablaFilasEvento = "";
+                let tablaFilasRegistro = "";
+                let alertasCoberturaHTML = "";
+                let alertasFrecuenciaHTML = "";
+
+                nnas.forEach(n => {
+                    const dataN = dData.nnaData[n];
+                    
+                    // Fila Evento
+                    tablaFilasEvento += `<tr><td class="col-nna">${n}</td>`;
+                    for(let i=1; i<=31; i++) tablaFilasEvento += `<td class="${dataN.dias[i] ? 'celda-activa' : ''}">${dataN.dias[i] || ''}</td>`;
+                    tablaFilasEvento += `<td class="col-total">${dataN.total}</td></tr>`;
+
+                    // Fila Registro
+                    tablaFilasRegistro += `<tr><td class="col-nna">${n}</td>`;
+                    for(let i=1; i<=31; i++) tablaFilasRegistro += `<td class="${dataN.diasRegistro[i] ? 'celda-registro' : ''}">${dataN.diasRegistro[i] || ''}</td>`;
+                    tablaFilasRegistro += `<td class="col-total">${Object.values(dataN.diasRegistro).reduce((a,b)=>a+b,0)}</td></tr>`;
+                    
+                    const config = DUPLAS_INFO[dupla];
+                    if (config && config.p2 !== "S/N") {
+                        if (!dataN.profAtencion[config.p1]) alertasCoberturaHTML += `<div class="alert-item">• ${n}: sin atención de <b>${config.p1}</b></div>`;
+                        if (!dataN.profAtencion[config.p2]) alertasCoberturaHTML += `<div class="alert-item">• ${n}: sin atención de <b>${config.p2}</b></div>`;
+                    }
+                    if (dataN.total < 7) alertasFrecuenciaHTML += `<div class="alert-item">• ${n}: <b>Baja mensual</b> (${dataN.total} intervenciones)</div>`;
+                    let total15 = 0;
+                    for(let i=1; i<=15; i++) total15 += (dataN.dias[i] || 0);
+                    if (total15 < 2) alertasFrecuenciaHTML += `<div class="alert-item">• ${n}: <b>Baja quincenal</b> (${total15} en días 1-15)</div>`;
+                });
+
+                let htmlDesfaseBadges = "";
+                Object.keys(dData.desfase).forEach(p => {
+                    const avg = (dData.desfase[p].suma / dData.desfase[p].cant).toFixed(1);
+                    htmlDesfaseBadges += `<div class="badge-desfase">${p}: ${avg} días hábiles</div>`;
+                });
+
+                const pageId = `page-dupla-${idx}`;
+                const divDupla = document.createElement('div');
+                divDupla.className = "seccion-dupla";
+                divDupla.id = pageId;
+                divDupla.setAttribute('data-equipo', dupla); 
+
+                divDupla.innerHTML = `
+                    <div class="header"><div><strong>FUNDACIÓN DEM</strong><br>FAE Cerrillos</div><div><strong>REPORTE ANALÍTICO DE GESTIÓN - ${nombreMesDetectado || 'MENSUAL'}</strong></div><div>${new Date().toLocaleDateString()}</div></div>
+                    <div class="dupla-header">
+                        <h2>EQUIPO: ${dupla}</h2>
+                        <div class="kpi-bar">
+                            <div class="kpi-item"><span class="kpi-val">${nnas.length}</span><span class="kpi-lab">Casos</span></div>
+                            <div class="kpi-item"><span class="kpi-val">${dData.totalDupla}</span><span class="kpi-lab">Total Interv.</span></div>
+                            <div class="kpi-item" style="border-color: var(--naranja)"><span class="kpi-val" style="color: var(--naranja)">${promedioInt}</span><span class="kpi-lab">Prom. x Niño</span></div>
+                        </div>
+                    </div>
+                    
+                    <div class="tabla-titulo">1. Cronograma de Intervención (Fecha en que ocurrió el evento)</div>
+                    <table><thead><tr><th class="col-nna">NNA</th>${Array.from({length:31},(_,i)=>`<th>${i+1}</th>`).join('')}<th class="col-total">TOT</th></tr></thead><tbody>${tablaFilasEvento}</tbody></table>
+                    
+                    <div class="tabla-titulo">2. Cronograma de Registro (Fecha en que se ingresó al sistema)</div>
+                    <table><thead><tr><th class="col-nna">NNA</th>${Array.from({length:31},(_,i)=>`<th>${i+1}</th>`).join('')}<th class="col-total">TOT</th></tr></thead><tbody>${tablaFilasRegistro}</tbody></table>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        ${alertasCoberturaHTML !== "" ? `<div class="alert-box-red"><h4>⚠️ Alertas de Cobertura Profesional:</h4><div class="alert-list">${alertasCoberturaHTML}</div></div>` : '<div class="alert-box-red" style="background:#f0fff4; border-color:#9ae6b4; color:#276749;"><h4>✅ Cobertura Profesional OK</h4></div>'}
+                        ${alertasFrecuenciaHTML !== "" ? `<div class="alert-box-orange"><h4>⚠️ Alertas de Frecuencia Técnica:</h4><div class="alert-list">${alertasFrecuenciaHTML}</div></div>` : '<div class="alert-box-orange" style="background:#f0fff4; border-color:#9ae6b4; color:#276749;"><h4>✅ Frecuencia Técnica OK</h4></div>'}
+                    </div>
+                    <div class="chart-full-width"><h3>3. Intervenciones por NNA (Digitación Completa)</h3><canvas id="g1-${idx}"></canvas></div>
+                    <div class="chart-full-width"><h3>4. Total Visitas y Terreno por NNA (Eventos Específicos)</h3><canvas id="g2-${idx}"></canvas></div>
+                    <div class="charts-half-grid"><div class="chart-half-width"><h3>5. Cobertura Terreno</h3><canvas id="g3-${idx}"></canvas></div><div class="chart-half-width"><h3>6. Intervenciones por profesional</h3><canvas id="g4-${idx}"></canvas></div></div>
+                    <div class="desfase-seccion"><div class="desfase-titulo">7. Oportunidad de digitación (desfase promedio en días hábiles)</div><div class="desfase-grid">${htmlDesfaseBadges || 'Sin datos'}</div></div>
+                    <button class="no-print btn-download-item" onclick="exportarPDFIndividual('${pageId}', '${dupla}')">📥 DESCARGAR PDF DE ESTE EQUIPO</button>`;
+                
+                contenedor.appendChild(divDupla);
+
+                const commonOpt = { 
+                    responsive: true, maintainAspectRatio: false, 
+                    layout: { padding: { top: 35, left: 45, right: 45 } }, 
+                    plugins: { 
+                        legend: false, 
+                        datalabels: { 
+                            anchor: 'end', align: 'top', color: '#1a1a1a',
+                            font: { size: 9, weight: 'bold', family: "'Segoe UI', Tahoma, sans-serif" } 
+                        } 
+                    }, 
+                    scales: { 
+                        y: { display: false, beginAtZero: true }, 
+                        x: { ticks: { font: { size: 9, weight: 'bold', family: "'Segoe UI', Tahoma, sans-serif" }, color: '#1a1a1a' } } 
+                    } 
+                };
+
+                const etiquetasNNA = nnas.map(n => { 
+                    let partes = n.split(' '); 
+                    return (partes[0] + ' ' + (partes[1] || '')).toUpperCase(); 
+                });
+
+                new Chart(document.getElementById(`g1-${idx}`), { type: 'bar', data: { labels: etiquetasNNA, datasets: [{ data: nnas.map(n=>dData.nnaData[n].total), backgroundColor: '#777777', barThickness: 12 }] }, options: commonOpt });
+                new Chart(document.getElementById(`g2-${idx}`), { type: 'bar', data: { labels: etiquetasNNA, datasets: [{ data: nnas.map(n=>dData.nnaData[n].visitas), backgroundColor: '#b5d333', barThickness: 12 }] }, options: commonOpt });
+                new Chart(document.getElementById(`g3-${idx}`), { type: 'pie', data: { labels: ['CON VISITA', 'SIN VISITA'], datasets: [{ data: [nnas.filter(n => dData.nnaData[n].visitas > 0).length, nnas.length - nnas.filter(n => dData.nnaData[n].visitas > 0).length], backgroundColor: ['#b5d333', '#e74c3c'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 9, weight: 'bold', family: "'Segoe UI', Tahoma, sans-serif" } } }, datalabels: { color: '#1a1a1a', formatter: (v,c)=>{ let sum = c.dataset.data.reduce((a,b)=>a+b,0); let perc = ((v*100)/sum).toFixed(1); return v + " (" + perc + "%)"; }, font: { size: 9, weight: 'bold', family: "'Segoe UI', Tahoma, sans-serif" } } } } });
+                new Chart(document.getElementById(`g4-${idx}`), { type: 'pie', data: { labels: Object.keys(dData.individual).map(k => k.toUpperCase()), datasets: [{ data: Object.values(dData.individual), backgroundColor: ['#b5d333', '#1a1a1a'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 9, weight: 'bold', family: "'Segoe UI', Tahoma, sans-serif" } } }, datalabels: { color: (ctx) => ctx.dataIndex === 0 ? '#1a1a1a' : '#fff', formatter: (v,c)=>{ let tot = c.dataset.data.reduce((a,b)=>a+b,0); return v + " (" + ((v*100)/tot).toFixed(1) + "%)"; }, font: { size: 8, weight: 'bold', family: "'Segoe UI', Tahoma, sans-serif" } } } } });
+            });
+            alert("Reporte finalizado.");
+        }
+
+        function exportarPDFIndividual(id, nombreEquipo) {
+            const element = document.getElementById(id);
+            const noPrintElements = element.querySelectorAll('.no-print');
+            noPrintElements.forEach(el => el.style.display = 'none');
+
+            const opt = { 
+                margin: 0, 
+                filename: 'Reporte_' + nombreEquipo.replace(/ /g, '_') + '.pdf', 
+                image: { type: 'jpeg', quality: 0.98 }, 
+                html2canvas: { scale: 2.3, useCORS: true, logging: false, scrollY: 0, scrollX: 0 }, 
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                pagebreak: { mode: 'avoid-all' }
+            };
+
+            html2pdf().set(opt).from(element).save().then(() => {
+                noPrintElements.forEach(el => el.style.display = 'block');
+            });
+        }
+
+        async function exportarPDFSeparados() {
+            const secciones = document.querySelectorAll('.seccion-dupla');
+            if (secciones.length === 0) return alert("Primero debe generar el reporte.");
+            for (let i = 0; i < secciones.length; i++) {
+                const nombreEquipo = secciones[i].getAttribute('data-equipo');
+                const pageId = secciones[i].id;
+                await exportarPDFIndividual(pageId, nombreEquipo);
+            }
+        }
+    </script>
+</body>
+</html>
