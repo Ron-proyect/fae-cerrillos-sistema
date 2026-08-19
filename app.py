@@ -16,7 +16,8 @@ import zipfile
 import extra_streamlit_components as stx
 # --- CONEXIÓN A SUPABASE ---
 # Reemplaza lo que está entre comillas con los datos que copiaste de Supabase
-URL_SUPABASE = st.secrets["supabase"]["url"]
+# --- CONEXIÓN DE DIAGNÓSTICO ---
+URL_SUPABASE = "https://bnypthionhjtcllbanl.supabase.co"
 KEY_SUPABASE = st.secrets["supabase"]["key"]
 
 # Creamos el "mensajero" que llevará y traerá datos
