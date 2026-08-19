@@ -16,12 +16,13 @@ import zipfile
 import extra_streamlit_components as stx
 # --- CONEXIÓN A SUPABASE ---
 # Reemplaza lo que está entre comillas con los datos que copiaste de Supabase
-# --- CONEXIÓN DE DIAGNÓSTICO ---
+# --- CONEXIÓN DE EMERGENCIA (LIMPIA) ---
 URL_SUPABASE = "https://bnypthionhjtcllbanl.supabase.co".strip()
-KEY_SUPABASE = st.secrets["supabase"]["key"]
+KEY_SUPABASE = "sb_publishable_LOMUlOl8h9-ovNd9zNW_dw_g4_Nqhwv".strip()
 
-# Creamos el "mensajero" que llevará y traerá datos
 supabase: Client = create_client(URL_SUPABASE, KEY_SUPABASE)
+# Inicialización del cliente
+# Creamos el "mensajero" que llevará y traerá datos
 
 # ==============================================================================
 # --- 1. CONFIGURACIÓN INICIAL Y CONSTANTES ---
