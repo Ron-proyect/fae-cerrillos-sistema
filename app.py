@@ -918,8 +918,17 @@ if not df_c.empty:
                 df_ing_vista = df_maestro_vista[["Caso", "Próximo Informe", "F. Límite (Teo)", "Días", "Estado (Ingreso)"]].rename(columns={"F. Límite (Teo)": "Fecha Límite (Ingreso)", "Días": "Días Restantes", "Estado (Ingreso)": "Estado Ingreso"})
                 st.dataframe(df_ing_vista.style.map(lambda v: 'color: #d63031; font-weight: bold' if "🔴" in str(v) else '', subset=['Estado Ingreso']), use_container_width=True, hide_index=True)
 
-                pdf_bytes = generar_pdf_visual(prof_sel, df_maestro_vista, data_grafico_barras, cumple_count, no_cumple_count)
-                st.download_button(label="📥 Descargar Reporte PDF Ejecutivo", data=pdf_bytes, file_name=f"Reporte_{prof_sel}.pdf", mime="application/pdf")
+                # --- SEGUNDO CANDADO DE SEGURIDAD (REPORTE EJECUTIVO) ---
+                try:
+                    pdf_bytes = generar_pdf_visual(prof_sel, df_maestro_vista, data_grafico_barras, cumple_count, no_cumple_count)
+                    st.download_button(
+                        label="📥 Descargar Reporte PDF Ejecutivo", 
+                        data=pdf_bytes, 
+                        file_name=f"Reporte_{prof_sel}.pdf", 
+                        mime="application/pdf"
+                    )
+                except Exception as e:
+                    st.info("El reporte PDF estará disponible al seleccionar un profesional con casos.")
 
     # --- TAB 2: PANEL GLOBAL (ADMIN) ---
     if st.session_state.user_role == "admin":
