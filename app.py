@@ -16,8 +16,8 @@ import zipfile
 import extra_streamlit_components as stx
 # --- CONEXIÓN A SUPABASE ---
 # Reemplaza lo que está entre comillas con los datos que copiaste de Supabase
-URL_SUPABASE = "https://bnypthionhjtucllbanl.supabase.co"
-KEY_SUPABASE = "sb_publishable_LOMUlOI8h9-ovNd9zNW_dw_g4_Nqhwv"
+URL_SUPABASE = st.secrets["supabase"]["url"]
+KEY_SUPABASE = st.secrets["supabase"]["key"]
 
 # Creamos el "mensajero" que llevará y traerá datos
 supabase: Client = create_client(URL_SUPABASE, KEY_SUPABASE)
