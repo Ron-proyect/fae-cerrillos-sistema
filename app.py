@@ -14,18 +14,16 @@ import streamlit.components.v1 as components
 from docxtpl import DocxTemplate
 import zipfile
 import extra_streamlit_components as stx
-# --- CONEXIÓN A SUPABASE ---
-# Reemplaza lo que está entre comillas con los datos que copiaste de Supabase
-# --- CONEXIÓN DE EMERGENCIA (LIMPIA) ---
+# ==============================================================================
+# --- CONEXIÓN A SUPABASE (VERSIÓN ÚNICA Y LIMPIA) ---
+# ==============================================================================
+from supabase import create_client, Client
+
 URL_SUPABASE = "https://bnypthionhjtcllbanl.supabase.co".strip()
 KEY_SUPABASE = "sb_publishable_LOMUlOl8h9-ovNd9zNW_dw_g4_Nqhwv".strip()
 
 supabase: Client = create_client(URL_SUPABASE, KEY_SUPABASE)
-# Inicialización del cliente
-# Creamos el "mensajero" que llevará y traerá datos
-
 # ==============================================================================
-# --- 1. CONFIGURACIÓN INICIAL Y CONSTANTES ---
 # ==============================================================================
 st.set_page_config(
     page_title="Gestión de Plazos - FAE DEM Cerrillos", 
