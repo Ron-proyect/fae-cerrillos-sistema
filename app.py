@@ -860,9 +860,18 @@ if not df_c.empty:
             
             st.write("### ⏱️ Cronograma de Informes")
             df_full_hitos = pd.concat([pd.DataFrame(hitos_inicial), pd.DataFrame(hitos_larga)])
-            pdf_cron_bytes = generar_pdf_cronograma(caso_sel, f_ingreso, df_full_hitos)
-            st.download_button(label="📥 Descargar Cronograma Completo (PDF)", data=pdf_cron_bytes, file_name=f"Cronograma_{caso_sel}.pdf", mime="application/pdf")
-
+            # --- CANDADO DE SEGURIDAD PARA EL PDF ---
+            if caso_sel and caso_sel != "---":
+                try:
+                    pdf_cron_bytes = generar_pdf_cronograma(caso_sel, f_ingreso, df_full_hitos)
+                    st.download_button(
+                        label="📥 Descargar Cronograma Completo (PDF)", 
+                        data=pdf_cron_bytes, 
+                        file_name=f"Cronograma_{caso_sel}.pdf", 
+                        mime="application/pdf"
+                    )
+                except Exception as e:
+                    st.warning("Selecciona un caso válido para generar el cronograma.")
             st.dataframe(pd.DataFrame(hitos_inicial)[["Informe", "Fecha Límite", "Fecha Envío Real", "Desfase", "Fecha Corresponde", "Vigencia (3m)"]].style.map(style_func, subset=['Vigencia (3m)']), use_container_width=True, hide_index=True, column_config=conf_detalle)
             if hitos_larga:
                 st.markdown("---")
