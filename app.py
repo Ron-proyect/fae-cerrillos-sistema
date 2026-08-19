@@ -674,8 +674,24 @@ if not df_c.empty:
                 
                 venc_ope_str = (pd.to_datetime(f_ref_ope) + pd.DateOffset(months=3)).strftime('%d-%m-%Y') if f_ref_ope else "-"
                 vigencia_str = "🟢 VIGENTE" if f_ref_ope and hoy <= (pd.to_datetime(f_ref_ope) + pd.DateOffset(months=3)).date() else "🔴 VENCIDO"
+
+                # --- CÁLCULO DE DESFASE (FIX: esta clave faltaba y rompía el PDF del cronograma) ---
+                if not reg_e.empty:
+                    f_real = reg_e.iloc[0]['Fecha Envio Real']
+                    desfase_dias = (f_real - fecha_limite).days
+                    desfase_str = f"✅ A tiempo ({abs(desfase_dias)} días)" if desfase_dias <= 0 else f"⚠️ Retraso de {desfase_dias} días"
+                else:
+                    dias_res = (fecha_limite - hoy).days
+                    desfase_str = f"Atrasado por {abs(dias_res)} días" if dias_res < 0 else f"Faltan {dias_res} días"
                 
-                fila = {"Informe": nombre_inf, "Fecha Límite": fecha_limite.strftime('%d-%m-%Y'), "Fecha Envío Real": f_envio_str, "Fecha Corresponde": venc_ope_str, "Vigencia (3m)": vigencia_str}
+                fila = {
+                    "Informe": nombre_inf, 
+                    "Fecha Límite": fecha_limite.strftime('%d-%m-%Y'), 
+                    "Fecha Envío Real": f_envio_str, 
+                    "Desfase": desfase_str, 
+                    "Fecha Corresponde": venc_ope_str, 
+                    "Vigencia (3m)": vigencia_str
+                }
                 if i < 7: hitos_inicial.append(fila)
                 else: hitos_larga.append(fila)
 
@@ -684,7 +700,8 @@ if not df_c.empty:
                 try:
                     pdf_cron = generar_pdf_cronograma(caso_sel, f_ingreso, pd.DataFrame(hitos_inicial + hitos_larga))
                     st.download_button("📥 Descargar Cronograma (PDF)", pdf_cron, f"Cronograma_{caso_sel}.pdf")
-                except: st.warning("Error al generar PDF")
+                except Exception as e:
+                    st.warning(f"Error al generar PDF: {e}")
             
             st.dataframe(pd.DataFrame(hitos_inicial), use_container_width=True, hide_index=True)
             if hitos_larga:
@@ -717,7 +734,8 @@ if not df_c.empty:
                 try:
                     pdf_ejecutivo = generar_pdf_visual(prof_sel, df_maestro_vista, data_grafico_barras, cumple_count, no_cumple_count)
                     st.download_button("📥 Descargar Reporte Ejecutivo (PDF)", pdf_ejecutivo, f"Reporte_{prof_sel}.pdf")
-                except: st.info("Reporte PDF disponible.")
+                except Exception as e:
+                    st.info(f"Reporte PDF no disponible: {e}")
 
     # --- TAB 2: PANEL GLOBAL (ADMIN) ---
     if st.session_state.user_role == "admin":
