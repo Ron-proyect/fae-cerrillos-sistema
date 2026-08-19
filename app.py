@@ -360,7 +360,7 @@ def generar_pdf_visual(prof_nombre, df_resumen, data_grafico_barras, cumple_coun
             pdf.cell(anchos[5], 8, est_operativo, border=1, align="C")
             pdf.cell(anchos[6], 8, str(row['Meses']), border=1, align="C")
             pdf.ln()
-    return pdf.output()
+    return bytes(pdf.output())
 
 def generar_pdf_cronograma(caso_nombre, f_ingreso, df_hitos):
     pdf = FPDF()
@@ -384,7 +384,7 @@ def generar_pdf_cronograma(caso_nombre, f_ingreso, df_hitos):
         pdf.cell(anchos[4], 8, str(row['Fecha Corresponde']), border=1, align="C")
         pdf.cell(anchos[5], 8, vig_limpio, border=1, align="C")
         pdf.ln()
-    return pdf.output()
+    return bytes(pdf.output())
     # ==============================================================================
 # --- 8. BARRA LATERAL (GESTIÓN NUBE) ---
 # ==============================================================================
