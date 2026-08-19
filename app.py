@@ -718,25 +718,75 @@ if not df_c.empty:
     if st.session_state.user_role == "admin":
         with tab_global:
             st.subheader("🌎 Estado Global")
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Total Casos", len(df_c))
             
+            # --- CÁLCULOS PARA GRÁFICOS GLOBALES ---
+            global_cumple, global_atraso = 0, 0
+            data_profesionales = []
+            resumen_global_maestro = []
+
+            for p in sorted(df_c['Profesional'].unique()):
+                df_p = df_c[df_c['Profesional'] == p]
+                p_cumple, p_atraso = 0, 0
+                for c in df_p['Caso'].unique():
+                    envios_c = df_e[df_e['Caso'] == c]
+                    f_ing_c = df_c[df_c['Caso'] == c].iloc[0]['Fecha Ingreso']
+                    f_ref = pd.to_datetime(envios_c['Fecha Envio Real']).max().date() if not envios_c.empty else f_ing_c
+                    
+                    m_ant = (hoy.year - f_ing_c.year) * 12 + (hoy.month - f_ing_c.month)
+                    if hoy.day < f_ing_c.day: m_ant -= 1
+                    
+                    if (hoy - f_ref).days <= 90: p_cumple += 1
+                    else: p_atraso += 1
+                    
+                    resumen_global_maestro.append({
+                        "Caso": c, "RIT": df_c[df_c['Caso'] == c].iloc[0]['RIT'],
+                        "Profesional": p, "Meses": m_ant, "codnino": df_c[df_c['Caso'] == c].iloc[0].get('codnino', 'S/I')
+                    })
+
+                global_cumple += p_cumple
+                global_atraso += p_atraso
+                data_profesionales.append({"Profesional": p, "Al día": p_cumple, "Fuera de plazo": p_atraso})
+
+            # --- MÉTRICAS ---
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Total Casos", global_cumple + global_atraso)
+            c2.metric("Cumplimiento Global", f"{(global_cumple/(global_cumple + global_atraso))*100:.1f}%" if (global_cumple + global_atraso) > 0 else "0%")
+            c3.metric("Casos Fuera de Plazo", global_atraso)
+
+            # --- GRÁFICOS ---
+            st.divider()
+            col_g1, col_g2 = st.columns([2, 1])
+            with col_g1:
+                fig_comp = px.bar(pd.DataFrame(data_profesionales), x="Profesional", y=["Al día", "Fuera de plazo"], 
+                                  color_discrete_map={"Al día": COLOR_VERDE_IRIDEM, "Fuera de plazo": COLOR_GRIS_IRIDEM}, 
+                                  barmode="group", text_auto=True)
+                fig_comp.update_layout(xaxis_tickangle=-45, height=400, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                st.plotly_chart(fig_comp, use_container_width=True)
+            with col_g2:
+                fig_global_pie = go.Figure(data=[go.Pie(labels=['Al día', 'Fuera de plazo'], values=[global_cumple, global_atraso], hole=.5, marker_colors=[COLOR_VERDE_IRIDEM, COLOR_GRIS_IRIDEM])])
+                fig_global_pie.update_layout(height=350, showlegend=True, legend=dict(orientation="h", y=-0.1, xanchor="center", x=0.5), paper_bgcolor='rgba(0,0,0,0)')
+                st.plotly_chart(fig_global_pie, use_container_width=True)
+
             # --- BUSCADOR RÁPIDO ---
             st.divider()
             st.subheader("🔍 Buscador Rápido de Casos")
+            df_maestro_search = pd.DataFrame(resumen_global_maestro)
             criterio = st.radio("Criterio de búsqueda:", ["Nombre del Caso", "Causa RIT", "Cod. Niño"], horizontal=True)
             col_filtro = 'Caso' if criterio == "Nombre del Caso" else ('RIT' if criterio == "Causa RIT" else 'codnino')
-            seleccion = st.selectbox("Escribe o selecciona:", ["---"] + sorted(df_c[col_filtro].astype(str).unique()))
+            seleccion = st.selectbox("Escribe o selecciona:", ["---"] + sorted(df_maestro_search[col_filtro].astype(str).unique()))
             
             if seleccion != "---":
-                info_c = df_c[df_c[col_filtro].astype(str) == seleccion].iloc[0]
-                st.markdown(f"""<div class="case-info-banner"><b>🆔 Cod. Niño:</b> {info_c.get('codnino', 'S/I')} | <b>👤 Caso:</b> {info_c['Caso']} | <b>📄 RIT:</b> {info_c['RIT']} | <b>🤝 Profesional:</b> {info_c['Profesional']}</div>""", unsafe_allow_html=True)
+                info_c = df_maestro_search[df_maestro_search[col_filtro].astype(str) == seleccion].iloc[0]
+                st.markdown(f"""
+                    <div class="case-info-banner">
+                        <b>🆔 Cod. Niño:</b> {info_c['codnino']} | <b>👤 Caso:</b> {info_c['Caso']} | <b>📄 RIT:</b> {info_c['RIT']} | <b>🤝 Profesional:</b> {info_c['Profesional']} | <b>⏱️ Antigüedad:</b> {info_c['Meses']} meses
+                    </div>
+                """, unsafe_allow_html=True)
 
             st.divider()
             st.subheader("📋 Lista Maestra")
             st.dataframe(df_c, use_container_width=True, hide_index=True)
             st.download_button("📥 Descargar Matriz Completa (Excel)", convertir_a_excel_completo(df_c, df_e), "Matriz_Completa_FAE.xlsx")
-
     # --- TAB 3: LISTA DE ESPERA ---
     if st.session_state.user_role == "admin":
         with tab_espera:
