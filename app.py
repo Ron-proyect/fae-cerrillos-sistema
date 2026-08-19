@@ -16,11 +16,22 @@ import zipfile
 import extra_streamlit_components as stx
 
 # ==============================================================================
-# --- CONEXIÓN A SUPABASE (VERSIÓN ÚNICA Y LIMPIA) ---
+# --- CONEXIÓN A SUPABASE (VERSIÓN SEGURA CON st.secrets) ---
 # ==============================================================================
-# Usamos la conexión directa que garantizó el funcionamiento previo
-URL_SUPABASE = "https://bnypthionhjtucllbanl.supabase.co".strip()
-KEY_SUPABASE = "sb_publishable_LOMUlOI8h9-ovNd9zNW_dw_g4_Nqhwv".strip()
+# IMPORTANTE: la URL y la key NUNCA deben escribirse directo en el código.
+# Se leen desde el panel de Secrets de Streamlit Cloud (Settings > Secrets), donde
+# debes tener guardado:
+#
+# [supabase]
+# url = "https://bnypthionhjtucllbanl.supabase.co"
+# key = "sb_publishable_xxxxxxxxxxxxxxxxxxxxxxxx"
+#
+try:
+    URL_SUPABASE = st.secrets["supabase"]["url"].strip()
+    KEY_SUPABASE = st.secrets["supabase"]["key"].strip()
+except Exception:
+    st.error("⚠️ No se encontraron las credenciales de Supabase en 'Secrets'. Configúralas en Settings > Secrets de Streamlit Cloud.")
+    st.stop()
 
 supabase: Client = create_client(URL_SUPABASE, KEY_SUPABASE)
 
