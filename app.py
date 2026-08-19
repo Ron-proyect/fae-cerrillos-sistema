@@ -374,12 +374,15 @@ def generar_pdf_cronograma(caso_nombre, f_ingreso, df_hitos):
     for i, h in enumerate(headers): pdf.cell(anchos[i], 10, h, border=1, fill=True, align="C")
     pdf.ln(); pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 7)
     for _, row in df_hitos.iterrows():
+        # Limpieza de emojis/caracteres especiales: helvetica no los soporta y rompe el PDF
+        desf_limpio = "".join(c for c in str(row['Desfase']) if ord(c) < 128).strip()[:30]
+        vig_limpio = "".join(c for c in str(row['Vigencia (3m)']) if ord(c) < 128).strip()
         pdf.cell(anchos[0], 8, str(row['Informe']), border=1, align="C")
         pdf.cell(anchos[1], 8, str(row['Fecha Límite']), border=1, align="C")
         pdf.cell(anchos[2], 8, str(row['Fecha Envío Real']), border=1, align="C")
-        pdf.cell(anchos[3], 8, str(row['Desfase'])[:30], border=1, align="C")
+        pdf.cell(anchos[3], 8, desf_limpio, border=1, align="C")
         pdf.cell(anchos[4], 8, str(row['Fecha Corresponde']), border=1, align="C")
-        pdf.cell(anchos[5], 8, str(row['Vigencia (3m)']).replace("🟢 ","").replace("🔴 ","").replace("⚪ ",""), border=1, align="C")
+        pdf.cell(anchos[5], 8, vig_limpio, border=1, align="C")
         pdf.ln()
     return pdf.output()
     # ==============================================================================
