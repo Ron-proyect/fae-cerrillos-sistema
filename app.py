@@ -18,7 +18,7 @@ import extra_streamlit_components as stx
 # ==============================================================================
 # --- CONEXIÓN A SUPABASE (VERSIÓN ÚNICA Y LIMPIA) ---
 # ==============================================================================
-URL_SUPABASE = st.secrets["supabase"]["url"]
+URL_SUPABASE = "https://bnypthionhjtcllbanl.supabase.co"
 KEY_SUPABASE = st.secrets["supabase"]["key"]
 
 supabase: Client = create_client(URL_SUPABASE, KEY_SUPABASE)
