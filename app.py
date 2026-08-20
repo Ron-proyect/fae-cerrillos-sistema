@@ -626,6 +626,7 @@ if not df_c.empty:
         if not df_c_filtrado.empty:
             col_graf1, col_graf2 = st.columns([5, 1])
             data_grafico_barras = [] 
+            detalles_pendientes_ind = []
             with col_graf1:
                 st.markdown("#### 📊 Días desde último envío por caso")
                 for c in df_c_filtrado['Caso'].unique():
@@ -649,6 +650,19 @@ if not df_c.empty:
                         "Meses en Programa": f"{meses_ant} meses",
                         "Límite 3 meses": vencimiento_3m.strftime('%d-%m-%Y')
                     })
+
+                    # --- Detalle de casos fuera de plazo (más de 3 meses desde último envío) ---
+                    if (hoy - ultima_fecha).days > 90:
+                        entregados_lista = envios_caso['Informe'].tolist()
+                        idx_proximo = max([NOMBRES_TABLA.index(inf) for inf in entregados_lista if inf in NOMBRES_TABLA]) + 1 if entregados_lista else 0
+                        proximo_inf = NOMBRES_TABLA[idx_proximo] if idx_proximo < len(NOMBRES_TABLA) else "-"
+                        detalles_pendientes_ind.append({
+                            "Caso": c,
+                            "RIT": df_c[df_c['Caso'] == c].iloc[0]['RIT'],
+                            "Próximo Informe": proximo_inf,
+                            "Venc. (3m)": vencimiento_3m.strftime('%d-%m-%Y'),
+                            "Meses": meses_ant
+                        })
                 
                 df_grafico = pd.DataFrame(data_grafico_barras)
                 fig_barras = px.bar(df_grafico, x='Caso', y='Días', color='Tipo', text='Días', 
@@ -665,6 +679,17 @@ if not df_c.empty:
                 fig_torta = go.Figure(data=[go.Pie(labels=['Al día', 'Fuera de plazo'], values=[cumple_count, no_cumple_count], hole=.5, marker_colors=[COLOR_VERDE_IRIDEM, COLOR_GRIS_IRIDEM])])
                 fig_torta.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=300, showlegend=True, paper_bgcolor='rgba(0,0,0,0)')
                 st.plotly_chart(fig_torta, use_container_width=True)
+                st.write(f"<div style='margin-top: 10px; text-align: center;'><b>Total: {cumple_count + no_cumple_count} casos</b></div>", unsafe_allow_html=True)
+
+                if no_cumple_count > 0:
+                    st.markdown('<div class="gray-container">', unsafe_allow_html=True)
+                    if st.button(f"⚠️ Ver {no_cumple_count} Informes Pendientes", use_container_width=True, key="btn_pendientes_ind"):
+                        st.session_state.ver_pendientes_ind = not st.session_state.ver_pendientes_ind
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+            if st.session_state.ver_pendientes_ind and no_cumple_count > 0:
+                st.warning(f"⚠️ Casos Fuera de Plazo: {prof_sel}")
+                st.dataframe(pd.DataFrame(detalles_pendientes_ind), use_container_width=True, hide_index=True)
 
             st.divider()
             caso_sel = st.selectbox("2. Caso seleccionado:", sorted(df_c_filtrado['Caso'].unique()))
