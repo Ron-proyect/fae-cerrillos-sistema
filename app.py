@@ -676,8 +676,23 @@ if not df_c.empty:
 
             with col_graf2:
                 st.markdown("#### 🎯 Cumplimiento")
-                fig_torta = go.Figure(data=[go.Pie(labels=['Al día', 'Fuera de plazo'], values=[cumple_count, no_cumple_count], hole=.5, marker_colors=[COLOR_VERDE_IRIDEM, COLOR_GRIS_IRIDEM])])
-                fig_torta.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=300, showlegend=True, paper_bgcolor='rgba(0,0,0,0)')
+                fig_torta = go.Figure(data=[go.Pie(
+                    labels=['Al día', 'Fuera de plazo'], 
+                    values=[cumple_count, no_cumple_count], 
+                    hole=.5, 
+                    marker_colors=[COLOR_VERDE_IRIDEM, COLOR_GRIS_IRIDEM],
+                    textposition='inside',
+                    insidetextorientation='horizontal',
+                    textinfo='percent',
+                    textfont=dict(size=14, color="white")
+                )])
+                fig_torta.update_layout(
+                    margin=dict(t=0, b=0, l=0, r=0), 
+                    height=300, 
+                    showlegend=True, 
+                    legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
+                    paper_bgcolor='rgba(0,0,0,0)'
+                )
                 st.plotly_chart(fig_torta, use_container_width=True)
                 st.write(f"<div style='margin-top: 10px; text-align: center;'><b>Total: {cumple_count + no_cumple_count} casos</b></div>", unsafe_allow_html=True)
 
@@ -862,6 +877,9 @@ if not df_c.empty:
     # --- TAB 4: ANALÍTICA SIS ---
     if st.session_state.user_role == "admin":
         with tab_sis:
+            st.link_button("📊 Abrir Analítica SIS (versión completa)", "https://gestion-fae.richardronck.workers.dev/", use_container_width=True)
+            st.caption("Se abre en una pestaña nueva. Abajo se muestra la versión integrada en este dashboard, si está disponible.")
+            st.divider()
             if os.path.exists(SIS_HTML_FILE):
                 with open(SIS_HTML_FILE, 'r', encoding='utf-8') as f:
                     components.html(f.read(), height=1200, scrolling=True)
@@ -869,6 +887,9 @@ if not df_c.empty:
 
     # --- TAB 5: AUTOMATIZADOR WORD ---
     with tab_word:
+        st.link_button("📝 Abrir Automatizador Word (versión completa)", "https://automatizador-rf-wvfwwtdka7rkyxkmu68ca2.streamlit.app/", use_container_width=True)
+        st.caption("Se abre en una pestaña nueva. Abajo está la versión integrada en este dashboard.")
+        st.divider()
         st.subheader("📝 Automatizador de Documentos Word")
         opcion_plantilla = st.selectbox("Selecciona la plantilla:", ["Informe de evaluación", "Registro de intervención", "Subir propia (.docx)"])
         plantilla_final = "plantilla.docx" if opcion_plantilla == "Informe de evaluación" else ("plantilla_2.docx" if opcion_plantilla == "Registro de intervención" else st.file_uploader("Sube plantilla", type=["docx"]))
