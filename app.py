@@ -666,6 +666,15 @@ if not df_c.empty:
                 
                 df_grafico = pd.DataFrame(data_grafico_barras)
                 fig_barras = px.bar(df_grafico, x='Caso', y='Días', color='Tipo', text='Días', 
+                                   hover_name=None,
+                                   hover_data={
+                                       'Caso': False,
+                                       'Tipo': False,
+                                       'Días': False,
+                                       'Fecha Referencia': True,
+                                       'Meses en Programa': True,
+                                       'Límite 3 meses': True
+                                   },
                                    color_discrete_map={"Días desde último envío": COLOR_VERDE_IRIDEM, "días desde ingreso (Diagnóstico)": COLOR_GRIS_IRIDEM})
                 fig_barras.add_hline(y=90, line_color="#ff7f7f", line_width=2)
                 fig_barras.update_layout(xaxis_tickangle=-45, height=400, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
@@ -815,9 +824,17 @@ if not df_c.empty:
                     if (hoy - f_ref).days <= 90: p_cumple += 1
                     else: p_atraso += 1
                     
+                    # Cálculo de edad a partir de fechanacimiento
+                    try:
+                        f_nac = pd.to_datetime(df_c[df_c['Caso'] == c].iloc[0].get('fechanacimiento'), errors='coerce')
+                        edad = hoy.year - f_nac.year - ((hoy.month, hoy.day) < (f_nac.month, f_nac.day)) if pd.notnull(f_nac) else "S/I"
+                    except:
+                        edad = "S/I"
+
                     resumen_global_maestro.append({
                         "Caso": c, "RIT": df_c[df_c['Caso'] == c].iloc[0]['RIT'],
-                        "Profesional": p, "Meses": m_ant, "codnino": df_c[df_c['Caso'] == c].iloc[0].get('codnino', 'S/I')
+                        "Profesional": p, "Meses": m_ant, "Edad": edad,
+                        "codnino": df_c[df_c['Caso'] == c].iloc[0].get('codnino', 'S/I')
                     })
 
                 global_cumple += p_cumple
@@ -854,16 +871,26 @@ if not df_c.empty:
             
             if seleccion != "---":
                 info_c = df_maestro_search[df_maestro_search[col_filtro].astype(str) == seleccion].iloc[0]
+                edad_txt = f"{info_c['Edad']} años" if info_c['Edad'] != "S/I" else "S/I"
                 st.markdown(f"""
                     <div class="case-info-banner">
-                        <b>🆔 Cod. Niño:</b> {info_c['codnino']} | <b>👤 Caso:</b> {info_c['Caso']} | <b>📄 RIT:</b> {info_c['RIT']} | <b>🤝 Profesional:</b> {info_c['Profesional']} | <b>⏱️ Antigüedad:</b> {info_c['Meses']} meses
+                        <b>🆔 Cod. Niño:</b> {info_c['codnino']} | <b>👤 Caso:</b> {info_c['Caso']} | <b>🎂 Edad:</b> {edad_txt} | <b>📄 RIT:</b> {info_c['RIT']} | <b>🤝 Profesional:</b> {info_c['Profesional']} | <b>⏱️ Antigüedad:</b> {info_c['Meses']} meses
                     </div>
                 """, unsafe_allow_html=True)
 
             st.divider()
             st.subheader("📋 Lista Maestra")
             st.dataframe(df_c, use_container_width=True, hide_index=True)
-            st.download_button("📥 Descargar Matriz Completa (Excel)", convertir_a_excel_completo(df_c, df_e), "Matriz_Completa_FAE.xlsx")
+            col_dl1, col_dl2 = st.columns(2)
+            with col_dl1:
+                st.download_button("📥 Descargar Matriz Completa (Excel)", convertir_a_excel_completo(df_c, df_e), "Matriz_Completa_FAE.xlsx")
+            with col_dl2:
+                df_lista_simple = df_c[["Caso", "Profesional"]].copy().sort_values("Caso").reset_index(drop=True)
+                df_lista_simple.insert(0, "N°", range(1, len(df_lista_simple) + 1))
+                output_simple = io.BytesIO()
+                with pd.ExcelWriter(output_simple, engine='openpyxl') as writer:
+                    df_lista_simple.to_excel(writer, index=False, sheet_name='Lista_Simple')
+                st.download_button("📋 Descargar Lista Simple (Excel)", output_simple.getvalue(), "Lista_Simple_FAE.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     # --- TAB 3: LISTA DE ESPERA ---
     if st.session_state.user_role == "admin":
         with tab_espera:
