@@ -676,12 +676,15 @@ if not df_c.empty:
                         })
                 
                 df_grafico = pd.DataFrame(data_grafico_barras)
-                fig_barras = px.bar(df_grafico, x='Caso', y='Días', color='Tipo', text='Días', 
+                # Etiqueta de texto sobre cada barra: marca especial cuando lleva 0 días
+                df_grafico['Etiqueta'] = df_grafico['Días'].apply(lambda d: "🆕 0 (Recién ingresado)" if d == 0 else str(d))
+                fig_barras = px.bar(df_grafico, x='Caso', y='Días', color='Tipo', text='Etiqueta', 
                                    hover_name=None,
                                    hover_data={
                                        'Caso': False,
                                        'Tipo': False,
                                        'Días': False,
+                                       'Etiqueta': False,
                                        'Fecha Referencia': True,
                                        'Meses en Programa': True,
                                        'Límite 3 meses': True
@@ -689,7 +692,9 @@ if not df_c.empty:
                                    color_discrete_map={"Días desde último envío": COLOR_VERDE_IRIDEM, "días desde ingreso (Diagnóstico)": COLOR_GRIS_IRIDEM})
                 fig_barras.add_hline(y=90, line_color="#ff7f7f", line_width=2)
                 fig_barras.update_layout(xaxis_tickangle=-45, height=400, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
-                st.plotly_chart(fig_barras, use_container_width=True)
+                evento_clic = st.plotly_chart(fig_barras, use_container_width=True, on_select="rerun", key="grafico_barras_ind")
+                if evento_clic and evento_clic.selection and len(evento_clic.selection.points) > 0:
+                    st.session_state.caso_seleccionado = evento_clic.selection.points[0]['x']
 
             cumple_count = sum(1 for d in data_grafico_barras if d['Días'] <= 90)
             no_cumple_count = len(data_grafico_barras) - cumple_count
@@ -727,13 +732,27 @@ if not df_c.empty:
                 st.dataframe(pd.DataFrame(detalles_pendientes_ind), use_container_width=True, hide_index=True)
 
             st.divider()
-            caso_sel = st.selectbox("2. Caso seleccionado:", sorted(df_c_filtrado['Caso'].unique()))
+            lista_casos_f = sorted(df_c_filtrado['Caso'].unique())
+            if st.session_state.caso_seleccionado not in lista_casos_f:
+                st.session_state.caso_seleccionado = lista_casos_f[0]
+            lista_con_marca = [f"📍 {c}" if c == st.session_state.caso_seleccionado else c for c in lista_casos_f]
+            idx_sel = lista_casos_f.index(st.session_state.caso_seleccionado)
+            caso_sel_raw = st.selectbox("2. Caso seleccionado:", lista_con_marca, index=idx_sel)
+            caso_sel = caso_sel_raw.replace("📍 ", "")
+            st.session_state.caso_seleccionado = caso_sel
             datos_c = df_c[df_c['Caso'] == caso_sel].iloc[0]
             f_ingreso = datos_c['Fecha Ingreso']
             m_ant_tit = (hoy.year - f_ingreso.year) * 12 + (hoy.month - f_ingreso.month)
             if hoy.day < f_ingreso.day: m_ant_tit -= 1
+
+            try:
+                f_nac_sel = pd.to_datetime(datos_c.get('fechanacimiento'), errors='coerce')
+                edad_sel = hoy.year - f_nac_sel.year - ((hoy.month, hoy.day) < (f_nac_sel.month, f_nac_sel.day)) if pd.notnull(f_nac_sel) else "S/I"
+            except:
+                edad_sel = "S/I"
+            edad_sel_txt = f"{edad_sel} años" if edad_sel != "S/I" else "S/I"
             
-            st.markdown(f"""<div class="case-info-banner"><b>Caso:</b> {caso_sel} | <b>RIT:</b> {datos_c['RIT']} | <b>Ingreso:</b> {f_ingreso.strftime('%d-%m-%Y')} | <b>Antigüedad:</b> {m_ant_tit} meses</div>""", unsafe_allow_html=True)
+            st.markdown(f"""<div class="case-info-banner"><b>Caso:</b> {caso_sel} | <b>RIT:</b> {datos_c['RIT']} | <b>Edad:</b> {edad_sel_txt} | <b>Ingreso:</b> {f_ingreso.strftime('%d-%m-%Y')} | <b>Antigüedad:</b> {m_ant_tit} meses</div>""", unsafe_allow_html=True)
 
             hitos_inicial, hitos_larga = [], []
             for i, nombre_inf in enumerate(NOMBRES_TABLA):
@@ -908,6 +927,17 @@ if not df_c.empty:
             st.subheader("⏳ Casos en Lista de Espera")
             df_le = cargar_lista_espera()
             if not df_le.empty:
+                hoy_le = datetime.now().date()
+                df_le['Días en Lista de Espera'] = df_le['FechaIngresoLE'].apply(
+                    lambda f: (hoy_le - f).days if pd.notnull(f) else None
+                )
+                # Mover la nueva columna justo después de FechaIngresoLE para mejor lectura
+                cols_le = list(df_le.columns)
+                if 'FechaIngresoLE' in cols_le and 'Días en Lista de Espera' in cols_le:
+                    cols_le.remove('Días en Lista de Espera')
+                    idx_ing = cols_le.index('FechaIngresoLE')
+                    cols_le.insert(idx_ing + 1, 'Días en Lista de Espera')
+                    df_le = df_le[cols_le]
                 st.info(f"Actualmente hay **{len(df_le)}** niños/as en lista de espera.")
                 st.dataframe(df_le, use_container_width=True, hide_index=True)
             else: st.success("No hay casos en lista de espera.")
