@@ -575,9 +575,20 @@ if st.session_state.user_role == "admin":
     if archivo_espera:
         try:
             df_espera_raw = pd.read_excel(archivo_espera)
+            # Solo se envían las columnas que existen en la tabla 'lista_espera' de Supabase.
+            # Cualquier columna extra del Excel (ej. "CausalIngreso") se ignora para no romper la carga.
+            cols_interes = ["Nombres", "Apellido_Paterno", "Apellido_Materno", "FechaNacimiento", "Rut", "FechaIngresoLE", "Tribunal", "RIT", "FechaOrden", "ComunaNiño_a"]
+            cols_presentes = [c for c in cols_interes if c in df_espera_raw.columns]
+            cols_faltantes = [c for c in cols_interes if c not in df_espera_raw.columns]
+            cols_ignoradas = [c for c in df_espera_raw.columns if c not in cols_interes]
+            df_espera_filtrado = df_espera_raw[cols_presentes].copy()
+            if cols_faltantes:
+                st.sidebar.warning(f"⚠️ Columnas no encontradas en el Excel (se omiten): {', '.join(cols_faltantes)}")
+            if cols_ignoradas:
+                st.sidebar.info(f"ℹ️ Columnas del Excel no usadas por el sistema: {', '.join(cols_ignoradas)}")
             if st.sidebar.button("🔄 Actualizar Lista de Espera"):
                 supabase.table("lista_espera").delete().neq("id", 0).execute()
-                registros = df_espera_raw.to_dict(orient="records")
+                registros = df_espera_filtrado.to_dict(orient="records")
                 for r in registros:
                     for k, v in r.items():
                         if "Fecha" in k and pd.notnull(v): r[k] = str(pd.to_datetime(v).date())
