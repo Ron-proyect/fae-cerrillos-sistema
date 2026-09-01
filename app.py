@@ -404,6 +404,8 @@ if st.session_state.user_role == "admin":
     with st.sidebar.form("nuevo_caso", clear_on_submit=True):
         n_caso = st.text_input("Nombre del Caso")
         n_rit = st.text_input("Causa RIT")
+        n_codnino = st.text_input("Cod. Niño")
+        n_fecnac = st.date_input("Fecha de Nacimiento", datetime.now(), min_value=datetime(1990, 1, 1))
         prof = st.selectbox("Profesional", PROF_BASE)
         f_ing = st.date_input("Fecha Ingreso", datetime.now())
         if st.form_submit_button("Guardar Caso") and n_caso:
@@ -411,6 +413,8 @@ if st.session_state.user_role == "admin":
                 nuevo = {
                     "Caso": str(n_caso).strip(), 
                     "RIT": str(n_rit).strip(), 
+                    "codnino": str(n_codnino).strip(),
+                    "fechanacimiento": str(n_fecnac),
                     "Profesional": prof, 
                     "Fecha Ingreso": str(f_ing)
                 }
@@ -935,13 +939,24 @@ if not df_c.empty:
                 df_le['Días en Lista de Espera'] = df_le['FechaIngresoLE'].apply(
                     lambda f: (hoy_le - f).days if pd.notnull(f) else None
                 )
-                # Mover la nueva columna justo después de FechaIngresoLE para mejor lectura
+                # Cálculo de edad a partir de FechaNacimiento
+                def _calcular_edad_le(f_nac):
+                    if pd.isnull(f_nac):
+                        return None
+                    return hoy_le.year - f_nac.year - ((hoy_le.month, hoy_le.day) < (f_nac.month, f_nac.day))
+                if 'FechaNacimiento' in df_le.columns:
+                    df_le['Edad'] = df_le['FechaNacimiento'].apply(_calcular_edad_le)
+                # Mover las nuevas columnas justo después de sus fechas de referencia para mejor lectura
                 cols_le = list(df_le.columns)
                 if 'FechaIngresoLE' in cols_le and 'Días en Lista de Espera' in cols_le:
                     cols_le.remove('Días en Lista de Espera')
                     idx_ing = cols_le.index('FechaIngresoLE')
                     cols_le.insert(idx_ing + 1, 'Días en Lista de Espera')
-                    df_le = df_le[cols_le]
+                if 'FechaNacimiento' in cols_le and 'Edad' in cols_le:
+                    cols_le.remove('Edad')
+                    idx_nac = cols_le.index('FechaNacimiento')
+                    cols_le.insert(idx_nac + 1, 'Edad')
+                df_le = df_le[cols_le]
                 st.info(f"Actualmente hay **{len(df_le)}** niños/as en lista de espera.")
                 st.dataframe(df_le, use_container_width=True, hide_index=True)
             else: st.success("No hay casos en lista de espera.")
