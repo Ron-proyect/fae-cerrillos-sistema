@@ -486,25 +486,29 @@ if st.session_state.user_role == "admin":
         except Exception as e: 
             st.sidebar.error(f"Error: {e}")
 
-st.sidebar.divider()
-st.sidebar.header("3. Registrar Envío")
+# df_casos_sidebar se sigue calculando siempre porque se reutiliza más abajo
+# (sección "4. Eliminar Caso"), pero el formulario de registro de envío
+# solo se muestra si el usuario es admin.
 df_casos_sidebar = cargar_casos()
 if st.session_state.user_role != "admin":
     df_casos_sidebar = df_casos_sidebar[df_casos_sidebar['Profesional'] == st.session_state.user_name]
 
-if not df_casos_sidebar.empty:
-    with st.sidebar.form("registrar_envio", clear_on_submit=True):
-        caso_envio = st.selectbox("Selecciona el Caso", sorted(df_casos_sidebar['Caso'].unique()))
-        informe_envio = st.selectbox("¿Qué informe envió?", NOMBRES_TABLA)
-        f_envio = st.date_input("Fecha Real de Envío", datetime.now())
-        if st.form_submit_button("Registrar Envío"):
-            try:
-                nuevo_e = {"Caso": caso_envio, "Informe": informe_envio, "Fecha Envio Real": str(f_envio)}
-                supabase.table("entregas").upsert(nuevo_e, on_conflict="Caso, Informe").execute()
-                st.sidebar.success("✅ Envío registrado en la nube")
-                st.rerun()
-            except Exception as e:
-                st.sidebar.error(f"❌ Error: {e}")
+if st.session_state.user_role == "admin":
+    st.sidebar.divider()
+    st.sidebar.header("3. Registrar Envío")
+    if not df_casos_sidebar.empty:
+        with st.sidebar.form("registrar_envio", clear_on_submit=True):
+            caso_envio = st.selectbox("Selecciona el Caso", sorted(df_casos_sidebar['Caso'].unique()))
+            informe_envio = st.selectbox("¿Qué informe envió?", NOMBRES_TABLA)
+            f_envio = st.date_input("Fecha Real de Envío", datetime.now())
+            if st.form_submit_button("Registrar Envío"):
+                try:
+                    nuevo_e = {"Caso": caso_envio, "Informe": informe_envio, "Fecha Envio Real": str(f_envio)}
+                    supabase.table("entregas").upsert(nuevo_e, on_conflict="Caso, Informe").execute()
+                    st.sidebar.success("✅ Envío registrado en la nube")
+                    st.rerun()
+                except Exception as e:
+                    st.sidebar.error(f"❌ Error: {e}")
 
 if st.session_state.user_role == "admin":
     st.sidebar.divider()
