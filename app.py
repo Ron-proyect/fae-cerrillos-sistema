@@ -961,6 +961,71 @@ if not df_c.empty:
                 st.dataframe(df_le, use_container_width=True, hide_index=True)
             else: st.success("No hay casos en lista de espera.")
 
+            # --- REGISTRAR CASO DESDE LISTA DE ESPERA ---
+            st.divider()
+            st.subheader("➕ Registrar Caso desde Lista de Espera")
+            df_le_reg = cargar_lista_espera()
+            if not df_le_reg.empty:
+                opciones_le = {}
+                for idx, r in df_le_reg.iterrows():
+                    nombre_completo = f"{r.get('Nombres', '')} {r.get('Apellido_Paterno', '')} {r.get('Apellido_Materno', '')}".strip()
+                    rit_ref = r.get('RIT', 'S/R') if pd.notnull(r.get('RIT')) else "S/R"
+                    opciones_le[f"{nombre_completo} - RIT {rit_ref}"] = idx
+
+                seleccion_le = st.selectbox(
+                    "Selecciona a la persona de la Lista de Espera",
+                    ["---"] + list(opciones_le.keys()),
+                    key="sel_le_a_caso"
+                )
+
+                if seleccion_le != "---":
+                    fila_le = df_le_reg.loc[opciones_le[seleccion_le]]
+                    nombre_sugerido = f"{fila_le.get('Nombres', '')} {fila_le.get('Apellido_Paterno', '')} {fila_le.get('Apellido_Materno', '')}".strip()
+                    rit_sugerido = str(fila_le.get('RIT', '')) if pd.notnull(fila_le.get('RIT')) else ""
+                    fecnac_le = fila_le.get('FechaNacimiento')
+                    fecnac_sugerida = fecnac_le if pd.notnull(fecnac_le) else datetime.now()
+
+                    with st.form("form_le_a_caso"):
+                        caso_nombre_nuevo = st.text_input("Nombre del Caso", nombre_sugerido)
+                        rit_nuevo = st.text_input("Causa RIT", rit_sugerido)
+                        codnino_nuevo = st.text_input("Cod. Niño")
+                        fecnac_nuevo = st.date_input("Fecha de Nacimiento", fecnac_sugerida, min_value=datetime(1990, 1, 1))
+                        prof_nuevo = st.selectbox("Profesional", PROF_BASE, key="prof_le_a_caso")
+                        f_ing_nuevo = st.date_input("Fecha Ingreso", datetime.now(), key="fing_le_a_caso")
+
+                        if st.form_submit_button("✅ Registrar como Caso y eliminar de Lista de Espera") and caso_nombre_nuevo:
+                            try:
+                                tribunal_le = fila_le.get('Tribunal')
+                                comuna_le = fila_le.get('ComunaNiño_a')
+                                nuevo_caso = {
+                                    "Caso": str(caso_nombre_nuevo).strip(),
+                                    "RIT": str(rit_nuevo).strip(),
+                                    "codnino": str(codnino_nuevo).strip(),
+                                    "fechanacimiento": str(fecnac_nuevo),
+                                    "Profesional": prof_nuevo,
+                                    "Fecha Ingreso": str(f_ing_nuevo),
+                                    "Tribunal": str(tribunal_le).strip() if pd.notnull(tribunal_le) else "S/I",
+                                    "Comuna": str(comuna_le).strip() if pd.notnull(comuna_le) else "S/I",
+                                }
+                                supabase.table("casos").insert(nuevo_caso).execute()
+
+                                # Eliminar el registro correspondiente de la Lista de Espera
+                                if 'id' in fila_le.index and pd.notnull(fila_le.get('id')):
+                                    supabase.table("lista_espera").delete().eq("id", fila_le['id']).execute()
+                                else:
+                                    supabase.table("lista_espera").delete().match({
+                                        "Nombres": fila_le.get('Nombres'),
+                                        "Apellido_Paterno": fila_le.get('Apellido_Paterno'),
+                                        "Apellido_Materno": fila_le.get('Apellido_Materno'),
+                                    }).execute()
+
+                                st.success(f"✅ Caso '{caso_nombre_nuevo}' registrado y eliminado de la Lista de Espera")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ Error al registrar: {e}")
+            else:
+                st.caption("No hay personas en la Lista de Espera para registrar como caso.")
+
     # --- TAB 4: ANALÍTICA SIS ---
     if st.session_state.user_role == "admin":
         with tab_sis:
