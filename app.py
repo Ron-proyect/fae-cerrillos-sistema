@@ -96,6 +96,9 @@ if 'caso_seleccionado' not in st.session_state:
 if 'ver_pendientes_ind' not in st.session_state:
     st.session_state.ver_pendientes_ind = False
 
+if 'prof_seleccionado_ind' not in st.session_state:
+    st.session_state.prof_seleccionado_ind = None
+
 st.markdown(f"""
     <style>
     .stApp {{ background-color: {COLOR_GRIS_FONDO}; }}
@@ -587,7 +590,11 @@ if not df_c.empty:
         st.subheader("🔍 Consulta por Profesional")
         if st.session_state.user_role == "admin":
             lista_profs_f = sorted(df_c['Profesional'].unique())
-            prof_sel = st.selectbox("Selecciona Profesional:", lista_profs_f, key="prof_sel_ind")
+            if st.session_state.prof_seleccionado_ind not in lista_profs_f:
+                st.session_state.prof_seleccionado_ind = lista_profs_f[0]
+            idx_prof = lista_profs_f.index(st.session_state.prof_seleccionado_ind)
+            prof_sel = st.selectbox("Selecciona Profesional:", lista_profs_f, index=idx_prof)
+            st.session_state.prof_seleccionado_ind = prof_sel
         else:
             prof_sel = st.session_state.user_name
             st.info(f"Visualizando casos de: **{prof_sel}**")
