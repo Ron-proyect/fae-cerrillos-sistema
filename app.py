@@ -580,8 +580,12 @@ df_e = cargar_entregas()
 if not df_c.empty:
     hoy = datetime.now().date()
     
-    st.markdown("<h1 style='text-align: center; color: black; margin-bottom: 0;'>FAE DEM Cerrillos</h1>", unsafe_allow_html=True)
-    st.markdown(f"<h3 style='text-align: center; color: {COLOR_GRIS_PIZARRA}; margin-top: 0;'>Sistema de control de gestión digital</h3>", unsafe_allow_html=True)
+    st.markdown("""
+        <div style='background-color: #EAF4D3; border-radius: 12px; padding: 25px 20px; margin-bottom: 10px;'>
+            <h1 style='text-align: center; color: black; margin-bottom: 0;'>FAE DEM Cerrillos</h1>
+            <h3 style='text-align: center; color: #5D6D7E; margin-top: 5px; margin-bottom: 0;'>Sistema de control de gestión digital</h3>
+        </div>
+    """, unsafe_allow_html=True)
     st.divider()
 
     if st.session_state.user_role == "admin":
