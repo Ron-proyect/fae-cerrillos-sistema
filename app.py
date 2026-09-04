@@ -871,6 +871,16 @@ if not df_c.empty:
                                   color_discrete_map={"Al día": COLOR_VERDE_IRIDEM, "Fuera de plazo": COLOR_GRIS_IRIDEM}, 
                                   barmode="group", text_auto=True)
                 fig_comp.update_layout(xaxis_tickangle=-45, height=400, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                # Total de casos por dupla, mostrado sobre cada par de barras sin modificar sus valores
+                for fila_prof in data_profesionales:
+                    total_prof = fila_prof["Al día"] + fila_prof["Fuera de plazo"]
+                    altura_max = max(fila_prof["Al día"], fila_prof["Fuera de plazo"])
+                    fig_comp.add_annotation(
+                        x=fila_prof["Profesional"], y=altura_max,
+                        text=f"Total: {total_prof}",
+                        showarrow=False, yshift=18,
+                        font=dict(size=11, color=COLOR_GRIS_IRIDEM, family="Arial Black")
+                    )
                 st.plotly_chart(fig_comp, use_container_width=True)
             with col_g2:
                 fig_global_pie = go.Figure(data=[go.Pie(labels=['Al día', 'Fuera de plazo'], values=[global_cumple, global_atraso], hole=.5, marker_colors=[COLOR_VERDE_IRIDEM, COLOR_GRIS_IRIDEM])])
@@ -908,6 +918,12 @@ if not df_c.empty:
                 st.download_button("📋 Descargar Lista Simple (Excel)", output_simple.getvalue(), "Lista_Simple_FAE.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     if st.session_state.user_role == "admin":
         with tab_espera:
+            st.subheader("👥 Casos Activos por Dupla")
+            st.caption("Referencia para decidir a quién asignar el próximo ingreso.")
+            conteo_casos_dupla = df_c.groupby('Profesional').size().reset_index(name='Casos Activos').sort_values('Profesional')
+            st.dataframe(conteo_casos_dupla, use_container_width=True, hide_index=True)
+
+            st.divider()
             st.subheader("⏳ Casos en Lista de Espera")
             df_le = cargar_lista_espera()
             if not df_le.empty:
