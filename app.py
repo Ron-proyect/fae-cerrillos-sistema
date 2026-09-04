@@ -99,6 +99,9 @@ if 'ver_pendientes_ind' not in st.session_state:
 if 'prof_seleccionado_ind' not in st.session_state:
     st.session_state.prof_seleccionado_ind = None
 
+if 'ver_pendientes_global' not in st.session_state:
+    st.session_state.ver_pendientes_global = False
+
 st.markdown(f"""
     <style>
     .stApp {{ background-color: {COLOR_GRIS_FONDO}; }}
@@ -577,8 +580,8 @@ df_e = cargar_entregas()
 if not df_c.empty:
     hoy = datetime.now().date()
     
-    st.markdown("<h1 style='text-align: center; color: black; margin-bottom: 0;'>Ecosistema Digital FAE DEM Cerrillos</h1>", unsafe_allow_html=True)
-    st.markdown(f"<h3 style='text-align: center; color: {COLOR_GRIS_PIZARRA}; margin-top: 0;'>Control de Plazos y Automatización Institucional</h3>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: black; margin-bottom: 0;'>FAE DEM Cerrillos</h1>", unsafe_allow_html=True)
+    st.markdown(f"<h3 style='text-align: center; color: {COLOR_GRIS_PIZARRA}; margin-top: 0;'>Sistema de control de gestión digital</h3>", unsafe_allow_html=True)
     st.divider()
 
     if st.session_state.user_role == "admin":
@@ -800,6 +803,7 @@ if not df_c.empty:
             global_cumple, global_atraso = 0, 0
             data_profesionales = []
             resumen_global_maestro = []
+            detalles_pendientes_global = []
 
             for p in sorted(df_c['Profesional'].unique()):
                 df_p = df_c[df_c['Profesional'] == p]
@@ -812,8 +816,22 @@ if not df_c.empty:
                     m_ant = (hoy.year - f_ing_c.year) * 12 + (hoy.month - f_ing_c.month)
                     if hoy.day < f_ing_c.day: m_ant -= 1
                     
-                    if (hoy - f_ref).days <= 90: p_cumple += 1
-                    else: p_atraso += 1
+                    if (hoy - f_ref).days <= 90:
+                        p_cumple += 1
+                    else:
+                        p_atraso += 1
+                        venc_op_g = (pd.to_datetime(f_ref) + pd.DateOffset(months=3)).date()
+                        entregados_lista_g = envios_c['Informe'].tolist()
+                        idx_proximo_g = max([NOMBRES_TABLA.index(inf) for inf in entregados_lista_g if inf in NOMBRES_TABLA]) + 1 if entregados_lista_g else 0
+                        proximo_inf_g = NOMBRES_TABLA[idx_proximo_g] if idx_proximo_g < len(NOMBRES_TABLA) else "-"
+                        detalles_pendientes_global.append({
+                            "Caso": c,
+                            "RIT": df_c[df_c['Caso'] == c].iloc[0]['RIT'],
+                            "Profesional": p,
+                            "Próximo Informe": proximo_inf_g,
+                            "Venc. (3m)": venc_op_g.strftime('%d-%m-%Y'),
+                            "Meses": m_ant
+                        })
                     
                     try:
                         f_nac = pd.to_datetime(df_c[df_c['Caso'] == c].iloc[0].get('fechanacimiento'), errors='coerce')
@@ -835,6 +853,16 @@ if not df_c.empty:
             c1.metric("Total Casos", global_cumple + global_atraso)
             c2.metric("Cumplimiento Global", f"{(global_cumple/(global_cumple + global_atraso))*100:.1f}%" if (global_cumple + global_atraso) > 0 else "0%")
             c3.metric("Casos Fuera de Plazo", global_atraso)
+
+            if global_atraso > 0:
+                st.markdown('<div class="gray-container">', unsafe_allow_html=True)
+                if st.button(f"⚠️ Ver {global_atraso} Informes Pendientes (Todo el equipo)", use_container_width=True, key="btn_pendientes_global"):
+                    st.session_state.ver_pendientes_global = not st.session_state.get('ver_pendientes_global', False)
+                st.markdown('</div>', unsafe_allow_html=True)
+
+            if st.session_state.get('ver_pendientes_global', False) and global_atraso > 0:
+                st.warning("⚠️ Casos Fuera de Plazo: Todo el equipo")
+                st.dataframe(pd.DataFrame(detalles_pendientes_global), use_container_width=True, hide_index=True)
 
             st.divider()
             col_g1, col_g2 = st.columns([2, 1])
