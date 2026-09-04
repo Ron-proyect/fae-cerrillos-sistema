@@ -877,9 +877,9 @@ if not df_c.empty:
                     altura_max = max(fila_prof["Al día"], fila_prof["Fuera de plazo"])
                     fig_comp.add_annotation(
                         x=fila_prof["Profesional"], y=altura_max,
-                        text=f"Total: {total_prof}",
-                        showarrow=False, yshift=18,
-                        font=dict(size=11, color=COLOR_GRIS_IRIDEM, family="Arial Black")
+                        text=f"{total_prof}<br>Total",
+                        showarrow=False, yshift=28,
+                        font=dict(size=11, color=COLOR_GRIS_IRIDEM, family="Arial")
                     )
                 st.plotly_chart(fig_comp, use_container_width=True)
             with col_g2:
