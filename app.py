@@ -1071,27 +1071,56 @@ if not df_c.empty:
         if uploaded_excel and plantilla_final:
             df_word_raw = pd.read_excel(uploaded_excel)
             df_word_raw.columns = limpiar_y_asegurar_unicos(df_word_raw.columns)
-            st.write(f"🔍 Datos detectados: {len(df_word_raw)} filas.")
-            
-            if st.button("🚀 Generar y Descargar Documentos"):
-                zip_buffer = io.BytesIO()
-                with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
-                    for idx, fila in df_word_raw.iterrows():
-                        data_dict = {k: limpiar_dato_word(v, k) for k, v in fila.items()}
-                        if 'descripcionevento' in data_dict:
-                            data_dict['objetivo'] = extraer_objetivo_al_inicio(data_dict['descripcionevento'])
-                            data_dict['descripcionevento'] = limpiar_descripcion_original(data_dict['descripcionevento'])
-                        
-                        doc = DocxTemplate(plantilla_final)
-                        doc.render(data_dict)
-                        doc_io = io.BytesIO()
-                        doc.save(doc_io)
-                        
-                        name = f"{data_dict.get('nombres', 'Doc')}_{idx+1}.docx"
-                        zip_file.writestr(name, doc_io.getvalue())
-                
-                st.success("✅ ¡Documentos generados!")
-                st.download_button("📥 Descargar ZIP", zip_buffer.getvalue(), "documentos_generados.zip", "application/zip")
+
+            if opcion_plantilla == "Informe de evaluación":
+                st.info("💡 Este documento usa solo la primera fila del Excel (un informe de evaluación = un caso).")
+                st.write(f"🔍 Datos detectados: {len(df_word_raw)} fila(s) en el Excel — se usará la primera.")
+
+                if st.button("🚀 Generar y Descargar Documento"):
+                    fila = df_word_raw.iloc[0]
+                    data_dict = {k: limpiar_dato_word(v, k) for k, v in fila.items()}
+                    if 'descripcionevento' in data_dict:
+                        data_dict['objetivo'] = extraer_objetivo_al_inicio(data_dict['descripcionevento'])
+                        data_dict['descripcionevento'] = limpiar_descripcion_original(data_dict['descripcionevento'])
+
+                    doc = DocxTemplate(plantilla_final)
+                    doc.render(data_dict)
+                    doc_io = io.BytesIO()
+                    doc.save(doc_io)
+                    doc_io.seek(0)
+
+                    nombre_nna = " ".join(str(data_dict.get(k, '')).strip() for k in ['nombres', 'apellido_paterno', 'apellido_materno'] if data_dict.get(k, '-') not in ('', '-')).strip()
+                    nombre_archivo = f"Informe de Evaluación - {nombre_nna}.docx" if nombre_nna else "Informe de Evaluación.docx"
+
+                    st.success("✅ ¡Documento generado!")
+                    st.download_button(
+                        "📥 Descargar Informe de Evaluación",
+                        doc_io.getvalue(),
+                        nombre_archivo,
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    )
+            else:
+                st.write(f"🔍 Datos detectados: {len(df_word_raw)} filas.")
+
+                if st.button("🚀 Generar y Descargar Documentos"):
+                    zip_buffer = io.BytesIO()
+                    with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
+                        for idx, fila in df_word_raw.iterrows():
+                            data_dict = {k: limpiar_dato_word(v, k) for k, v in fila.items()}
+                            if 'descripcionevento' in data_dict:
+                                data_dict['objetivo'] = extraer_objetivo_al_inicio(data_dict['descripcionevento'])
+                                data_dict['descripcionevento'] = limpiar_descripcion_original(data_dict['descripcionevento'])
+                            
+                            doc = DocxTemplate(plantilla_final)
+                            doc.render(data_dict)
+                            doc_io = io.BytesIO()
+                            doc.save(doc_io)
+                            
+                            name = f"{data_dict.get('nombres', 'Doc')}_{idx+1}.docx"
+                            zip_file.writestr(name, doc_io.getvalue())
+                    
+                    st.success("✅ ¡Documentos generados!")
+                    st.download_button("📥 Descargar ZIP", zip_buffer.getvalue(), "documentos_generados.zip", "application/zip")
 
 else:
     st.info("Sube tu Excel para comenzar.")
