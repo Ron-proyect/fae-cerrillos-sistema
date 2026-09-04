@@ -18,14 +18,6 @@ import extra_streamlit_components as stx
 # ==============================================================================
 # --- CONEXIÓN A SUPABASE (VERSIÓN SEGURA CON st.secrets) ---
 # ==============================================================================
-# IMPORTANTE: la URL y la key NUNCA deben escribirse directo en el código.
-# Se leen desde el panel de Secrets de Streamlit Cloud (Settings > Secrets), donde
-# debes tener guardado:
-#
-# [supabase]
-# url = "https://bnypthionhjtucllbanl.supabase.co"
-# key = "sb_publishable_xxxxxxxxxxxxxxxxxxxxxxxx"
-#
 try:
     URL_SUPABASE = st.secrets["supabase"]["url"].strip()
     KEY_SUPABASE = st.secrets["supabase"]["key"].strip()
@@ -35,27 +27,20 @@ except Exception:
 
 supabase: Client = create_client(URL_SUPABASE, KEY_SUPABASE)
 
-# ==============================================================================
-# --- 1. CONFIGURACIÓN INICIAL Y CONSTANTES ---
-# ==============================================================================
 st.set_page_config(
     page_title="Gestión de Plazos - FAE DEM Cerrillos", 
     layout="wide"
 )
 
-# Inicializar el gestor de cookies para la sesión persistente de 24 horas
 cookie_manager = stx.CookieManager()
 
-# Colores Institucionales IRIDEM
 COLOR_VERDE_IRIDEM = "#A6CE39"
 COLOR_GRIS_IRIDEM = "#31333F"
 COLOR_GRIS_PIZARRA = "#5D6D7E"
 COLOR_GRIS_FONDO = "#F8F9F9"
 
-# Rutas de Archivos (Se mantienen nombres por compatibilidad de lógica)
 SIS_HTML_FILE = "analitica_sis.html"
 
-# Diccionario de Credenciales (Actualizado: Alan Zamora)
 CREDENTIALS = {
     "admin": {"pass": "cerrillos2026", "role": "admin", "name": "Administrador"},
     "bruno.diaz": {"pass": "fae.cerrillos", "role": "user", "name": "Bruno Diaz-Casandra Mora"},
@@ -67,7 +52,6 @@ CREDENTIALS = {
     "solange.francisco": {"pass": "fae.cerrillos", "role": "user", "name": "Solange Alegría-Francisco Carvajal"}
 }
 
-# Lista Maestra de Profesionales
 PROF_BASE = sorted([
     "Bruno Diaz-Casandra Mora", 
     "Daniela Izquierdo-Paula Leyton", 
@@ -78,7 +62,6 @@ PROF_BASE = sorted([
     "Solange Alegría-Francisco Carvajal"
 ])
 
-# Listado Maestro de Informes para Cronogramas
 NOMBRES_TABLA = [
     "Evaluación", "Avances 1", "Avances 2", "Avances 3", "Avances 4", 
     "Avances 5", "Avances 6", "Avances 7", "Avances 8", "Avances 9", 
@@ -86,19 +69,14 @@ NOMBRES_TABLA = [
     "Avances 15", "Avances 16", "Avances 17", "Avances 18", "Avances 19", "Avances 20"
 ]
 
-# Columnas Extendidas de Ficha Clínica / Matriz Maestra
 COLUMNAS_EXTENDIDAS = [
     "codnino", "fechanacimiento", "Nacionalidad", "CalidadJuridica", 
     "DireccionNino", "Comuna", "Tribunal", "ConQuienVive"
 ]
 
-# ==============================================================================
-# --- 2. INICIALIZACIÓN DE VARIABLES DE ESTADO Y COOKIES ---
-# ==============================================================================
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
-# Auto-login por cookie de 24 horas
 saved_user = cookie_manager.get('fae_login_cookie')
 if saved_user and not st.session_state.logged_in:
     if saved_user in CREDENTIALS:
@@ -118,9 +96,6 @@ if 'caso_seleccionado' not in st.session_state:
 if 'ver_pendientes_ind' not in st.session_state:
     st.session_state.ver_pendientes_ind = False
 
-# ==============================================================================
-# --- 3. ESTILO CSS MAESTRO (PERSONALIZACIÓN VISUAL) ---
-# ==============================================================================
 st.markdown(f"""
     <style>
     .stApp {{ background-color: {COLOR_GRIS_FONDO}; }}
@@ -161,9 +136,6 @@ st.markdown(f"""
     </style>
     """, unsafe_allow_html=True)
 
-# ==============================================================================
-# --- 4. FUNCIONES DE LOGIN ---
-# ==============================================================================
 def login_screen():
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
@@ -185,9 +157,7 @@ def login_screen():
 if not st.session_state.logged_in:
     login_screen()
     st.stop()
-    # ==============================================================================
-# --- 5. FUNCIONES DE LIMPIEZA GRAMATICAL (MOTOR WORD ORIGINAL) ---
-# ==============================================================================
+
 def limpiar_y_asegurar_unicos(columnas):
     nombres_limpios = []
     for i, col in enumerate(columnas):
@@ -245,9 +215,6 @@ def formatear_fecha_larga(valor):
     except:
         return valor
 
-# ==============================================================================
-# --- 6. FUNCIONES DE DATOS Y EXPORTACIÓN (SUPABASE) ---
-# ==============================================================================
 def normalizar_texto(texto):
     if not isinstance(texto, str):
         return ""
@@ -326,9 +293,6 @@ def convertir_a_excel_simple(df):
         df_simple.to_excel(writer, index=False, sheet_name='Nomina_FAE')
     return output.getvalue()
 
-# ==============================================================================
-# --- 7. FUNCIONES PDF ---
-# ==============================================================================
 def generar_pdf_visual(prof_nombre, df_resumen, data_grafico_barras, cumple_count, no_cumple_count):
     pdf = FPDF()
     pdf.add_page()
@@ -358,7 +322,6 @@ def generar_pdf_visual(prof_nombre, df_resumen, data_grafico_barras, cumple_coun
     for i, t in enumerate(titulos): pdf.cell(anchos[i], 10, t, border=1, fill=True, align="C")
     pdf.ln(); pdf.set_font("helvetica", "", 7)
     for _, row in df_resumen.iterrows():
-            # Limpieza profunda de emojis para evitar errores en la nube
             caso_limpio = "".join(c for c in str(row['Caso']) if ord(c) < 128)[:28]
             est_ingreso = str(row['Estado (Ingreso)']).replace("🔴","").replace("🟠","").replace("⚪","").strip()
             est_operativo = str(row['Estado (Operativo)']).replace("🔴","").replace("🟢","").strip()
@@ -385,7 +348,6 @@ def generar_pdf_cronograma(caso_nombre, f_ingreso, df_hitos):
     for i, h in enumerate(headers): pdf.cell(anchos[i], 10, h, border=1, fill=True, align="C")
     pdf.ln(); pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 7)
     for _, row in df_hitos.iterrows():
-        # Limpieza de emojis/caracteres especiales: helvetica no los soporta y rompe el PDF
         desf_limpio = "".join(c for c in str(row['Desfase']) if ord(c) < 128).strip()[:30]
         vig_limpio = "".join(c for c in str(row['Vigencia (3m)']) if ord(c) < 128).strip()
         pdf.cell(anchos[0], 8, str(row['Informe']), border=1, align="C")
@@ -396,9 +358,7 @@ def generar_pdf_cronograma(caso_nombre, f_ingreso, df_hitos):
         pdf.cell(anchos[5], 8, vig_limpio, border=1, align="C")
         pdf.ln()
     return bytes(pdf.output())
-    # ==============================================================================
-# --- 8. BARRA LATERAL (GESTIÓN NUBE) ---
-# ==============================================================================
+
 if st.session_state.user_role == "admin":
     st.sidebar.header("1. Registrar Nuevo Caso")
     with st.sidebar.form("nuevo_caso", clear_on_submit=True):
@@ -490,9 +450,6 @@ if st.session_state.user_role == "admin":
         except Exception as e: 
             st.sidebar.error(f"Error: {e}")
 
-# df_casos_sidebar se sigue calculando siempre porque se reutiliza más abajo
-# (sección "4. Eliminar Caso"), pero el formulario de registro de envío
-# solo se muestra si el usuario es admin.
 df_casos_sidebar = cargar_casos()
 if st.session_state.user_role != "admin":
     df_casos_sidebar = df_casos_sidebar[df_casos_sidebar['Profesional'] == st.session_state.user_name]
@@ -583,8 +540,6 @@ if st.session_state.user_role == "admin":
     if archivo_espera:
         try:
             df_espera_raw = pd.read_excel(archivo_espera)
-            # Solo se envían las columnas que existen en la tabla 'lista_espera' de Supabase.
-            # Cualquier columna extra del Excel (ej. "CausalIngreso") se ignora para no romper la carga.
             cols_interes = ["Nombres", "Apellido_Paterno", "Apellido_Materno", "FechaNacimiento", "Rut", "FechaIngresoLE", "Tribunal", "RIT", "FechaOrden", "ComunaNiño_a"]
             cols_presentes = [c for c in cols_interes if c in df_espera_raw.columns]
             cols_faltantes = [c for c in cols_interes if c not in df_espera_raw.columns]
@@ -612,9 +567,7 @@ if st.sidebar.button("🚪 Cerrar Sesión"):
     cookie_manager.delete('fae_login_cookie')
     st.session_state.logged_in = False
     st.rerun()
-    # ==============================================================================
-# --- 9. CUERPO PRINCIPAL ---
-# ==============================================================================
+
 df_c = cargar_casos()
 df_e = cargar_entregas()
 
@@ -630,7 +583,6 @@ if not df_c.empty:
     else:
         tab_ind, tab_word = st.tabs(["👤 Mi Vista Profesional", "📝 Automatizador Word"])
 
-    # --- TAB 1: VISTA POR PROFESIONAL ---
     with tab_ind:
         st.subheader("🔍 Consulta por Profesional")
         if st.session_state.user_role == "admin":
@@ -670,7 +622,6 @@ if not df_c.empty:
                         "Límite 3 meses": vencimiento_3m.strftime('%d-%m-%Y')
                     })
 
-                    # --- Detalle de casos fuera de plazo (más de 3 meses desde último envío) ---
                     if (hoy - ultima_fecha).days > 90:
                         entregados_lista = envios_caso['Informe'].tolist()
                         idx_proximo = max([NOMBRES_TABLA.index(inf) for inf in entregados_lista if inf in NOMBRES_TABLA]) + 1 if entregados_lista else 0
@@ -684,7 +635,6 @@ if not df_c.empty:
                         })
                 
                 df_grafico = pd.DataFrame(data_grafico_barras)
-                # Etiqueta de texto sobre cada barra: marca especial cuando lleva 0 días
                 df_grafico['Etiqueta'] = df_grafico['Días'].apply(lambda d: "🆕 0 (Recién ingresado)" if d == 0 else str(d))
                 fig_barras = px.bar(df_grafico, x='Caso', y='Días', color='Tipo', text='Etiqueta', 
                                    hover_name=None,
@@ -776,7 +726,6 @@ if not df_c.empty:
                 venc_ope_str = (pd.to_datetime(f_ref_ope) + pd.DateOffset(months=3)).strftime('%d-%m-%Y') if f_ref_ope else "-"
                 vigencia_str = "🟢 VIGENTE" if f_ref_ope and hoy <= (pd.to_datetime(f_ref_ope) + pd.DateOffset(months=3)).date() else "🔴 VENCIDO"
 
-                # --- CÁLCULO DE DESFASE (FIX: esta clave faltaba y rompía el PDF del cronograma) ---
                 if not reg_e.empty:
                     f_real = reg_e.iloc[0]['Fecha Envio Real']
                     desfase_dias = (f_real - fecha_limite).days
@@ -810,7 +759,6 @@ if not df_c.empty:
                 st.write("### 🏠 Larga Permanencia")
                 st.dataframe(pd.DataFrame(hitos_larga), use_container_width=True, hide_index=True)
 
-            # --- CUADROS A Y B ---
             st.divider()
             resumen_maestro_pdf = [] 
             for _, row in df_c_filtrado.iterrows():
@@ -838,12 +786,10 @@ if not df_c.empty:
                 except Exception as e:
                     st.info(f"Reporte PDF no disponible: {e}")
 
-    # --- TAB 2: PANEL GLOBAL (ADMIN) ---
     if st.session_state.user_role == "admin":
         with tab_global:
             st.subheader("🌎 Estado Global")
             
-            # --- CÁLCULOS PARA GRÁFICOS GLOBALES ---
             global_cumple, global_atraso = 0, 0
             data_profesionales = []
             resumen_global_maestro = []
@@ -862,7 +808,6 @@ if not df_c.empty:
                     if (hoy - f_ref).days <= 90: p_cumple += 1
                     else: p_atraso += 1
                     
-                    # Cálculo de edad a partir de fechanacimiento
                     try:
                         f_nac = pd.to_datetime(df_c[df_c['Caso'] == c].iloc[0].get('fechanacimiento'), errors='coerce')
                         edad = hoy.year - f_nac.year - ((hoy.month, hoy.day) < (f_nac.month, f_nac.day)) if pd.notnull(f_nac) else "S/I"
@@ -879,13 +824,11 @@ if not df_c.empty:
                 global_atraso += p_atraso
                 data_profesionales.append({"Profesional": p, "Al día": p_cumple, "Fuera de plazo": p_atraso})
 
-            # --- MÉTRICAS ---
             c1, c2, c3 = st.columns(3)
             c1.metric("Total Casos", global_cumple + global_atraso)
             c2.metric("Cumplimiento Global", f"{(global_cumple/(global_cumple + global_atraso))*100:.1f}%" if (global_cumple + global_atraso) > 0 else "0%")
             c3.metric("Casos Fuera de Plazo", global_atraso)
 
-            # --- GRÁFICOS ---
             st.divider()
             col_g1, col_g2 = st.columns([2, 1])
             with col_g1:
@@ -899,7 +842,6 @@ if not df_c.empty:
                 fig_global_pie.update_layout(height=350, showlegend=True, legend=dict(orientation="h", y=-0.1, xanchor="center", x=0.5), paper_bgcolor='rgba(0,0,0,0)')
                 st.plotly_chart(fig_global_pie, use_container_width=True)
 
-            # --- BUSCADOR RÁPIDO ---
             st.divider()
             st.subheader("🔍 Buscador Rápido de Casos")
             df_maestro_search = pd.DataFrame(resumen_global_maestro)
@@ -929,7 +871,6 @@ if not df_c.empty:
                 with pd.ExcelWriter(output_simple, engine='openpyxl') as writer:
                     df_lista_simple.to_excel(writer, index=False, sheet_name='Lista_Simple')
                 st.download_button("📋 Descargar Lista Simple (Excel)", output_simple.getvalue(), "Lista_Simple_FAE.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    # --- TAB 3: LISTA DE ESPERA ---
     if st.session_state.user_role == "admin":
         with tab_espera:
             st.subheader("⏳ Casos en Lista de Espera")
@@ -939,14 +880,12 @@ if not df_c.empty:
                 df_le['Días en Lista de Espera'] = df_le['FechaIngresoLE'].apply(
                     lambda f: (hoy_le - f).days if pd.notnull(f) else None
                 )
-                # Cálculo de edad a partir de FechaNacimiento
                 def _calcular_edad_le(f_nac):
                     if pd.isnull(f_nac):
                         return None
                     return hoy_le.year - f_nac.year - ((hoy_le.month, hoy_le.day) < (f_nac.month, f_nac.day))
                 if 'FechaNacimiento' in df_le.columns:
                     df_le['Edad'] = df_le['FechaNacimiento'].apply(_calcular_edad_le)
-                # Mover las nuevas columnas justo después de sus fechas de referencia para mejor lectura
                 cols_le = list(df_le.columns)
                 if 'FechaIngresoLE' in cols_le and 'Días en Lista de Espera' in cols_le:
                     cols_le.remove('Días en Lista de Espera')
@@ -957,11 +896,61 @@ if not df_c.empty:
                     idx_nac = cols_le.index('FechaNacimiento')
                     cols_le.insert(idx_nac + 1, 'Edad')
                 df_le = df_le[cols_le]
+
+                # --- Columnas de acciones realizadas (marcables) ---
+                cols_acciones = ["visita_domiciliaria", "entrevista_inicial", "cumple_perfil", "no_cumple_perfil", "ficha_ingreso_completada"]
+                etiquetas_acciones = {
+                    "visita_domiciliaria": "Visita domiciliaria",
+                    "entrevista_inicial": "Entrevista inicial",
+                    "cumple_perfil": "Cumple perfil",
+                    "no_cumple_perfil": "No cumple perfil",
+                    "ficha_ingreso_completada": "Ficha de ingreso completada"
+                }
+                for col_acc in cols_acciones:
+                    if col_acc not in df_le.columns:
+                        df_le[col_acc] = False
+                    else:
+                        df_le[col_acc] = df_le[col_acc].fillna(False)
+
                 st.info(f"Actualmente hay **{len(df_le)}** niños/as en lista de espera.")
-                st.dataframe(df_le, use_container_width=True, hide_index=True)
+
+                col_config_acciones = {c: st.column_config.CheckboxColumn(etiquetas_acciones[c]) for c in cols_acciones}
+                cols_no_editables = [c for c in df_le.columns if c not in cols_acciones and c != 'id']
+                config_disabled = {c: None for c in cols_no_editables}
+
+                df_le_editado = st.data_editor(
+                    df_le,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config=col_config_acciones,
+                    disabled=cols_no_editables + (['id'] if 'id' in df_le.columns else []),
+                    key="editor_lista_espera"
+                )
+
+                if st.button("💾 Guardar Cambios en Acciones Realizadas"):
+                    if 'id' not in df_le.columns:
+                        st.error("No se puede guardar: falta la columna 'id' en la tabla. Contacta soporte técnico.")
+                    else:
+                        cambios = 0
+                        errores = 0
+                        for idx in df_le.index:
+                            fila_original = df_le.loc[idx]
+                            fila_nueva = df_le_editado.loc[idx]
+                            diffs = {c: bool(fila_nueva[c]) for c in cols_acciones if bool(fila_original[c]) != bool(fila_nueva[c])}
+                            if diffs:
+                                try:
+                                    supabase.table("lista_espera").update(diffs).eq("id", fila_original['id']).execute()
+                                    cambios += 1
+                                except Exception as e:
+                                    errores += 1
+                        if cambios:
+                            st.success(f"✅ {cambios} registro(s) actualizado(s).")
+                        if errores:
+                            st.error(f"❌ {errores} registro(s) no se pudieron guardar. Verifica que las columnas existan en Supabase (ver instrucciones).")
+                        if cambios:
+                            st.rerun()
             else: st.success("No hay casos en lista de espera.")
 
-            # --- REGISTRAR CASO DESDE LISTA DE ESPERA ---
             st.divider()
             st.subheader("➕ Registrar Caso desde Lista de Espera")
             df_le_reg = cargar_lista_espera()
@@ -1009,7 +998,6 @@ if not df_c.empty:
                                 }
                                 supabase.table("casos").insert(nuevo_caso).execute()
 
-                                # Eliminar el registro correspondiente de la Lista de Espera
                                 if 'id' in fila_le.index and pd.notnull(fila_le.get('id')):
                                     supabase.table("lista_espera").delete().eq("id", fila_le['id']).execute()
                                 else:
@@ -1026,7 +1014,6 @@ if not df_c.empty:
             else:
                 st.caption("No hay personas en la Lista de Espera para registrar como caso.")
 
-    # --- TAB 4: ANALÍTICA SIS ---
     if st.session_state.user_role == "admin":
         with tab_sis:
             st.link_button("📊 Abrir Analítica SIS (versión completa)", "https://gestion-fae.richardronck.workers.dev/", use_container_width=True)
@@ -1037,7 +1024,6 @@ if not df_c.empty:
                     components.html(f.read(), height=1200, scrolling=True)
             else: st.warning("Archivo de analítica no encontrado.")
 
-    # --- TAB 5: AUTOMATIZADOR WORD ---
     with tab_word:
         st.link_button("📝 Abrir Automatizador Word (versión completa)", "https://automatizador-rf-wvfwwtdka7rkyxkmu68ca2.streamlit.app/", use_container_width=True)
         st.caption("Se abre en una pestaña nueva. Abajo está la versión integrada en este dashboard.")
