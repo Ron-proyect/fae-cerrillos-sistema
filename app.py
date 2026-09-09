@@ -643,7 +643,7 @@ if not df_c.empty:
                             "Caso": c,
                             "RIT": df_c[df_c['Caso'] == c].iloc[0]['RIT'],
                             "Próximo Informe": proximo_inf,
-                            "Venc. (3m)": vencimiento_3m.strftime('%d-%m-%Y'),
+                            "Venc. (3m)": vencimiento_3m,
                             "Meses": meses_ant
                         })
                 
@@ -700,7 +700,10 @@ if not df_c.empty:
 
             if st.session_state.ver_pendientes_ind and no_cumple_count > 0:
                 st.warning(f"⚠️ Casos Fuera de Plazo: {prof_sel}")
-                st.dataframe(pd.DataFrame(detalles_pendientes_ind), use_container_width=True, hide_index=True)
+                df_pend_ind = pd.DataFrame(detalles_pendientes_ind)
+                df_pend_ind = df_pend_ind.sort_values(by="Venc. (3m)", ascending=True).reset_index(drop=True)
+                df_pend_ind['Venc. (3m)'] = pd.to_datetime(df_pend_ind['Venc. (3m)']).dt.strftime('%d-%m-%Y')
+                st.dataframe(df_pend_ind, use_container_width=True, hide_index=True)
 
             st.divider()
             lista_casos_f = sorted(df_c_filtrado['Caso'].unique())
@@ -805,10 +808,8 @@ if not df_c.empty:
             
             df_maestro_vista = pd.DataFrame(resumen_maestro_pdf)
             if not df_maestro_vista.empty:
-                # --- ORDENAMIENTO POR FECHA DE VENCIMIENTO (Venc. 3m) ---
                 df_maestro_vista = df_maestro_vista.sort_values(by="Venc. (3m)", ascending=True).reset_index(drop=True)
                 
-                # Formatear fechas a string para mostrar limpio en la tabla
                 df_maestro_vista['F. Límite (Teo)'] = pd.to_datetime(df_maestro_vista['F. Límite (Teo)']).dt.strftime('%d-%m-%Y')
                 df_maestro_vista['Venc. (3m)'] = pd.to_datetime(df_maestro_vista['Venc. (3m)']).dt.strftime('%d-%m-%Y')
 
@@ -853,7 +854,7 @@ if not df_c.empty:
                             "RIT": df_c[df_c['Caso'] == c].iloc[0]['RIT'],
                             "Profesional": p,
                             "Próximo Informe": proximo_inf_g,
-                            "Venc. (3m)": venc_op_g.strftime('%d-%m-%Y'),
+                            "Venc. (3m)": venc_op_g,
                             "Meses": m_ant
                         })
                     
@@ -886,7 +887,10 @@ if not df_c.empty:
 
             if st.session_state.get('ver_pendientes_global', False) and global_atraso > 0:
                 st.warning("⚠️ Casos Fuera de Plazo: Todo el equipo")
-                st.dataframe(pd.DataFrame(detalles_pendientes_global), use_container_width=True, hide_index=True)
+                df_pend_global = pd.DataFrame(detalles_pendientes_global)
+                df_pend_global = df_pend_global.sort_values(by="Venc. (3m)", ascending=True).reset_index(drop=True)
+                df_pend_global['Venc. (3m)'] = pd.to_datetime(df_pend_global['Venc. (3m)']).dt.strftime('%d-%m-%Y')
+                st.dataframe(df_pend_global, use_container_width=True, hide_index=True)
 
             st.divider()
             col_g1, col_g2 = st.columns([2, 1])
