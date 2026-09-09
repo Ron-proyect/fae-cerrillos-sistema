@@ -768,8 +768,7 @@ if not df_c.empty:
             
             st.dataframe(pd.DataFrame(hitos_inicial), use_container_width=True, hide_index=True)
             
-            # --- LÓGICA DE LARGA PERMANENCIA CONDICIONAL Y CON BOTÓN ---
-            tiene_larga_activa = len(hitos_larga) > 0 and m_ant_tit >= 21 # A partir de los 21 meses (o si existen registros)
+            tiene_larga_activa = len(hitos_larga) > 0 and m_ant_tit >= 21
             
             if tiene_larga_activa:
                 st.markdown("---")
@@ -799,15 +798,22 @@ if not df_c.empty:
                     venc_op = (pd.to_datetime(f_ref_op) + pd.DateOffset(months=3)).date()
                     fecha_limite_teo = (pd.to_datetime(f_ing) + pd.DateOffset(months=3 * (idx_proximo + 1))).date()
                     resumen_maestro_pdf.append({
-                        "Caso": c_nombre, "Próximo Informe": proximo_inf, "F. Límite (Teo)": fecha_limite_teo.strftime('%d-%m-%Y'), 
+                        "Caso": c_nombre, "Próximo Informe": proximo_inf, "F. Límite (Teo)": fecha_limite_teo, 
                         "Estado (Ingreso)": "🔴 VENCIDO" if hoy > fecha_limite_teo else "⚪ EN PLAZO", 
-                        "Venc. (3m)": venc_op.strftime('%d-%m-%Y'), "Estado (Operativo)": "🟢 VIGENTE" if hoy <= venc_op else "🔴 VENCIDO", "Meses": "0"
+                        "Venc. (3m)": venc_op, "Estado (Operativo)": "🟢 VIGENTE" if hoy <= venc_op else "🔴 VENCIDO", "Meses": "0"
                     })
             
             df_maestro_vista = pd.DataFrame(resumen_maestro_pdf)
             if not df_maestro_vista.empty:
-                st.subheader("📋 Próximas Entregas")
-                st.dataframe(df_maestro_vista[["Caso", "Próximo Informe", "Venc. (3m)", "Estado (Operativo)"]], use_container_width=True, hide_index=True)
+                # --- ORDENAMIENTO POR FECHA DE VENCIMIENTO PREDETERMINADO ---
+                df_maestro_vista = df_maestro_vista.sort_values(by="F. Límite (Teo)", ascending=True).reset_index(drop=True)
+                
+                # Formatear fechas a string para mostrar limpio en la tabla
+                df_maestro_vista['F. Límite (Teo)'] = pd.to_datetime(df_maestro_vista['F. Límite (Teo)']).dt.strftime('%d-%m-%Y')
+                df_maestro_vista['Venc. (3m)'] = pd.to_datetime(df_maestro_vista['Venc. (3m)']).dt.strftime('%d-%m-%Y')
+
+                st.subheader("📋 Próximas Entregas (Ordenadas por vencimiento)")
+                st.dataframe(df_maestro_vista[["Caso", "Próximo Informe", "F. Límite (Teo)", "Venc. (3m)", "Estado (Operativo)"]], use_container_width=True, hide_index=True)
                 try:
                     pdf_ejecutivo = generar_pdf_visual(prof_sel, df_maestro_vista, data_grafico_barras, cumple_count, no_cumple_count)
                     st.download_button("📥 Descargar Reporte Ejecutivo (PDF)", pdf_ejecutivo, f"Reporte_{prof_sel}.pdf")
