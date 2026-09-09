@@ -926,21 +926,13 @@ if not df_c.empty:
                 text='Casos Activos',
                 color_discrete_sequence=[COLOR_VERDE_IRIDEM]
             )
-           fig_conteo_dupla.update_traces(textposition='outside')
+            fig_conteo_dupla.update_traces(textposition='outside')
             fig_conteo_dupla.update_layout(
-                xaxis_tickangle=-45, 
-                height=400, # Aumentamos ligeramente la altura para que las etiquetas respiren
-                paper_bgcolor='rgba(0,0,0,0)', 
-                plot_bgcolor='rgba(0,0,0,0)',
-                yaxis_title="N° de Casos", 
-                xaxis_title="",
-                margin=dict(b=120) # Agregamos margen inferior para que los nombres largos no se corten
+                xaxis_tickangle=-45, height=350,
+                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                yaxis_title="N° de Casos", xaxis_title=""
             )
-            
-            # Envolvemos el gráfico en columnas para que ocupe aprox el 66% del ancho (proporción 2 a 1)
-            col_graf_espera, col_vacia_espera = st.columns([2, 1])
-            with col_graf_espera:
-                st.plotly_chart(fig_conteo_dupla, use_container_width=True)
+            st.plotly_chart(fig_conteo_dupla, use_container_width=True)
 
             st.divider()
             st.subheader("⏳ Casos en Lista de Espera")
