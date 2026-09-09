@@ -805,14 +805,14 @@ if not df_c.empty:
             
             df_maestro_vista = pd.DataFrame(resumen_maestro_pdf)
             if not df_maestro_vista.empty:
-                # --- ORDENAMIENTO POR FECHA DE VENCIMIENTO PREDETERMINADO ---
-                df_maestro_vista = df_maestro_vista.sort_values(by="F. Límite (Teo)", ascending=True).reset_index(drop=True)
+                # --- ORDENAMIENTO POR FECHA DE VENCIMIENTO (Venc. 3m) ---
+                df_maestro_vista = df_maestro_vista.sort_values(by="Venc. (3m)", ascending=True).reset_index(drop=True)
                 
                 # Formatear fechas a string para mostrar limpio en la tabla
                 df_maestro_vista['F. Límite (Teo)'] = pd.to_datetime(df_maestro_vista['F. Límite (Teo)']).dt.strftime('%d-%m-%Y')
                 df_maestro_vista['Venc. (3m)'] = pd.to_datetime(df_maestro_vista['Venc. (3m)']).dt.strftime('%d-%m-%Y')
 
-                st.subheader("📋 Próximas Entregas (Ordenadas por vencimiento)")
+                st.subheader("📋 Próximas Entregas (Ordenadas por Venc. 3m)")
                 st.dataframe(df_maestro_vista[["Caso", "Próximo Informe", "F. Límite (Teo)", "Venc. (3m)", "Estado (Operativo)"]], use_container_width=True, hide_index=True)
                 try:
                     pdf_ejecutivo = generar_pdf_visual(prof_sel, df_maestro_vista, data_grafico_barras, cumple_count, no_cumple_count)
