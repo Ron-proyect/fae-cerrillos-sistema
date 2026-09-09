@@ -928,10 +928,11 @@ if not df_c.empty:
             )
             fig_conteo_dupla.update_traces(textposition='outside')
             fig_conteo_dupla.update_layout(
-                xaxis_tickangle=-45, height=320,
+                xaxis_tickangle=-45, height=400,
                 paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
                 yaxis_title="N° de Casos", xaxis_title="",
-                yaxis=dict(range=[0, max_casos_dupla * 1.25 + 1])
+                yaxis=dict(range=[0, max_casos_dupla * 1.25 + 1]),
+                bargap=0.6
             )
             col_dupla1, col_dupla2 = st.columns([2, 1])
             with col_dupla1:
