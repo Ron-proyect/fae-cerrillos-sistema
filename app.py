@@ -6,7 +6,7 @@ import os
 import plotly.express as px
 import plotly.graph_objects as go
 import re
-from fpdf import FPDF 
+from fpdf import FPDF
 import io
 import matplotlib.pyplot as plt
 import unicodedata
@@ -871,7 +871,6 @@ if not df_c.empty:
                                   color_discrete_map={"Al día": COLOR_VERDE_IRIDEM, "Fuera de plazo": COLOR_GRIS_IRIDEM}, 
                                   barmode="group", text_auto=True)
                 fig_comp.update_layout(xaxis_tickangle=-45, height=400, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
-                # Total de casos por dupla, mostrado sobre cada par de barras sin modificar sus valores
                 y_total_fijo = max([max(fp["Al día"], fp["Fuera de plazo"]) for fp in data_profesionales], default=0) + 3
                 y_total_fijo = max(y_total_fijo, 22)
                 for fila_prof in data_profesionales:
@@ -926,13 +925,21 @@ if not df_c.empty:
                 text='Casos Activos',
                 color_discrete_sequence=[COLOR_VERDE_IRIDEM]
             )
+            
             fig_conteo_dupla.update_traces(textposition='outside')
             fig_conteo_dupla.update_layout(
-                xaxis_tickangle=-45, height=350,
-                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                yaxis_title="N° de Casos", xaxis_title=""
+                xaxis_tickangle=-45, 
+                height=400, 
+                paper_bgcolor='rgba(0,0,0,0)', 
+                plot_bgcolor='rgba(0,0,0,0)',
+                yaxis_title="N° de Casos", 
+                xaxis_title="",
+                margin=dict(b=120)
             )
-            st.plotly_chart(fig_conteo_dupla, use_container_width=True)
+            
+            col_graf_espera, col_vacia_espera = st.columns([2, 1])
+            with col_graf_espera:
+                st.plotly_chart(fig_conteo_dupla, use_container_width=True)
 
             st.divider()
             st.subheader("⏳ Casos en Lista de Espera")
