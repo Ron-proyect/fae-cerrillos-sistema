@@ -6,7 +6,7 @@ import os
 import plotly.express as px
 import plotly.graph_objects as go
 import re
-from fpdf import FPDF
+from fpdf import FPDF 
 import io
 import matplotlib.pyplot as plt
 import unicodedata
@@ -920,25 +920,21 @@ if not df_c.empty:
             st.subheader("👥 Casos Activos por Dupla")
             st.caption("Referencia para decidir a quién asignar el próximo ingreso.")
             conteo_casos_dupla = df_c.groupby('Profesional').size().reset_index(name='Casos Activos').sort_values('Profesional')
+            max_casos_dupla = conteo_casos_dupla['Casos Activos'].max() if not conteo_casos_dupla.empty else 0
             fig_conteo_dupla = px.bar(
                 conteo_casos_dupla, x='Profesional', y='Casos Activos',
                 text='Casos Activos',
                 color_discrete_sequence=[COLOR_VERDE_IRIDEM]
             )
-            
-            fig_conteo_dupla.update_traces(textposition='outside', textfont_size=11)
+            fig_conteo_dupla.update_traces(textposition='outside')
             fig_conteo_dupla.update_layout(
-                xaxis_tickangle=-45, 
-                height=350, 
-                paper_bgcolor='rgba(0,0,0,0)', 
-                plot_bgcolor='rgba(0,0,0,0)',
-                yaxis_title="N° de Casos", 
-                xaxis_title="",
-                margin=dict(t=40, b=120)
+                xaxis_tickangle=-45, height=320,
+                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                yaxis_title="N° de Casos", xaxis_title="",
+                yaxis=dict(range=[0, max_casos_dupla * 1.25 + 1])
             )
-            
-            col_graf_espera, col_vacia_espera = st.columns([1, 1])
-            with col_graf_espera:
+            col_dupla1, col_dupla2 = st.columns([2, 1])
+            with col_dupla1:
                 st.plotly_chart(fig_conteo_dupla, use_container_width=True)
 
             st.divider()
@@ -966,7 +962,6 @@ if not df_c.empty:
                     cols_le.insert(idx_nac + 1, 'Edad')
                 df_le = df_le[cols_le]
 
-                # --- Columnas de acciones realizadas (marcables) ---
                 cols_acciones = ["visita_domiciliaria", "entrevista_inicial", "cumple_perfil", "no_cumple_perfil", "ficha_ingreso_completada"]
                 etiquetas_acciones = {
                     "visita_domiciliaria": "Visita domiciliaria",
