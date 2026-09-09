@@ -102,6 +102,9 @@ if 'prof_seleccionado_ind' not in st.session_state:
 if 'ver_pendientes_global' not in st.session_state:
     st.session_state.ver_pendientes_global = False
 
+if 'mostrar_larga_permanencia_ind' not in st.session_state:
+    st.session_state.mostrar_larga_permanencia_ind = False
+
 st.markdown(f"""
     <style>
     .stApp {{ background-color: {COLOR_GRIS_FONDO}; }}
@@ -764,10 +767,25 @@ if not df_c.empty:
                     st.warning(f"Error al generar PDF: {e}")
             
             st.dataframe(pd.DataFrame(hitos_inicial), use_container_width=True, hide_index=True)
-            if hitos_larga:
+            
+            # --- LÓGICA DE LARGA PERMANENCIA CONDICIONAL Y CON BOTÓN ---
+            tiene_larga_activa = len(hitos_larga) > 0 and m_ant_tit >= 21 # A partir de los 21 meses (o si existen registros)
+            
+            if tiene_larga_activa:
                 st.markdown("---")
                 st.write("### 🏠 Larga Permanencia")
                 st.dataframe(pd.DataFrame(hitos_larga), use_container_width=True, hide_index=True)
+            else:
+                if len(hitos_larga) > 0:
+                    st.markdown("---")
+                    col_btn_lp, _ = st.columns([2, 3])
+                    with col_btn_lp:
+                        if st.button("📂 Mostrar Cronograma / Larga Permanencia", key="btn_toggle_larga"):
+                            st.session_state.mostrar_larga_permanencia_ind = not st.session_state.mostrar_larga_permanencia_ind
+                    
+                    if st.session_state.mostrar_larga_permanencia_ind:
+                        st.write("### 🏠 Larga Permanencia")
+                        st.dataframe(pd.DataFrame(hitos_larga), use_container_width=True, hide_index=True)
 
             st.divider()
             resumen_maestro_pdf = [] 
@@ -926,13 +944,12 @@ if not df_c.empty:
                 color_discrete_sequence=[COLOR_VERDE_IRIDEM]
             )
             
-            # Obtener el valor máximo para calcular un rango del eje Y que nunca corte las etiquetas superiores
             max_casos = conteo_casos_dupla['Casos Activos'].max() if not conteo_casos_dupla.empty else 10
 
             fig_conteo_dupla.update_traces(
                 textposition='outside', 
                 textfont_size=11, 
-                width=0.4  # Barras más delgadas
+                width=0.4
             )
             fig_conteo_dupla.update_layout(
                 xaxis_tickangle=-45, 
@@ -941,8 +958,8 @@ if not df_c.empty:
                 plot_bgcolor='rgba(0,0,0,0)',
                 yaxis_title="N° de Casos", 
                 xaxis_title="",
-                yaxis=dict(range=[0, max_casos * 1.25]),  # Extiende el límite superior del eje Y para evitar cortes
-                margin=dict(t=50, b=120)  # Margen superior e inferior optimizados
+                yaxis=dict(range=[0, max_casos * 1.25]),
+                margin=dict(t=50, b=120)
             )
             
             col_graf_espera, col_vacia_espera = st.columns([1, 1])
@@ -974,7 +991,6 @@ if not df_c.empty:
                     cols_le.insert(idx_nac + 1, 'Edad')
                 df_le = df_le[cols_le]
 
-                # --- Columnas de acciones realizadas (marcables) ---
                 cols_acciones = ["visita_domiciliaria", "entrevista_inicial", "cumple_perfil", "no_cumple_perfil", "ficha_ingreso_completada"]
                 etiquetas_acciones = {
                     "visita_domiciliaria": "Visita domiciliaria",
