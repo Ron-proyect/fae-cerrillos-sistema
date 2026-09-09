@@ -921,7 +921,18 @@ if not df_c.empty:
             st.subheader("👥 Casos Activos por Dupla")
             st.caption("Referencia para decidir a quién asignar el próximo ingreso.")
             conteo_casos_dupla = df_c.groupby('Profesional').size().reset_index(name='Casos Activos').sort_values('Profesional')
-            st.dataframe(conteo_casos_dupla, use_container_width=True, hide_index=True)
+            fig_conteo_dupla = px.bar(
+                conteo_casos_dupla, x='Profesional', y='Casos Activos',
+                text='Casos Activos',
+                color_discrete_sequence=[COLOR_VERDE_IRIDEM]
+            )
+            fig_conteo_dupla.update_traces(textposition='outside')
+            fig_conteo_dupla.update_layout(
+                xaxis_tickangle=-45, height=350,
+                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                yaxis_title="N° de Casos", xaxis_title=""
+            )
+            st.plotly_chart(fig_conteo_dupla, use_container_width=True)
 
             st.divider()
             st.subheader("⏳ Casos en Lista de Espera")
