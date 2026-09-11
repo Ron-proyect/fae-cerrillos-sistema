@@ -8,7 +8,6 @@ import plotly.graph_objects as go
 import re
 from fpdf import FPDF
 import io
-import matplotlib.pyplot as plt
 import unicodedata
 import streamlit.components.v1 as components
 from docxtpl import DocxTemplate
@@ -302,7 +301,7 @@ def convertir_a_excel_simple(df):
         df_simple.to_excel(writer, index=False, sheet_name='Nomina_FAE')
     return output.getvalue()
 
-def generar_pdf_visual(prof_nombre, df_resumen, data_grafico_barras, cumple_count, no_cumple_count):
+def generar_pdf_visual(prof_nombre, df_resumen, cumple_count, no_cumple_count):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_fill_color(213, 219, 219); pdf.rect(0, 0, 210, 45, 'F')
@@ -313,18 +312,11 @@ def generar_pdf_visual(prof_nombre, df_resumen, data_grafico_barras, cumple_coun
     pdf.set_text_color(49, 51, 63); pdf.set_font("helvetica", "", 10)
     pdf.cell(0, 10, f"Profesional: {prof_nombre} | Generado: {datetime.now().strftime('%d-%m-%Y')}", ln=True, align="C")
     pdf.ln(15)
-    try:
-        plt.figure(figsize=(10, 5))
-        df_bar = pd.DataFrame(data_grafico_barras)
-        plt.bar(df_bar['Caso'], df_bar['Días'], color=[COLOR_VERDE_IRIDEM if t == "Días desde último envío" else COLOR_GRIS_IRIDEM for t in df_bar['Tipo']])
-        plt.axhline(y=90, color='#ff7f7f', linestyle='-')
-        plt.xticks(rotation=45, ha='right', fontsize=8); plt.tight_layout()
-        img_buf = io.BytesIO(); plt.savefig(img_buf, format='png'); plt.close()
-        pdf.image(img_buf, x=10, w=190)
-    except: pass
-    pdf.add_page()
-    pdf.set_font("helvetica", "B", 16); pdf.set_text_color(93, 109, 126)
-    pdf.cell(0, 15, "RESUMEN DE PROXIMAS ENTREGAS", ln=True)
+    
+    pdf.set_font("helvetica", "B", 14); pdf.set_text_color(93, 109, 126)
+    pdf.cell(0, 10, "RESUMEN DE PROXIMAS ENTREGAS", ln=True)
+    pdf.ln(5)
+    
     anchos = [45, 22, 22, 28, 25, 30, 18] 
     titulos = ["Caso", "Prox. Inf.", "F. Limite", "Est. (Ingreso)", "Venc. (3m)", "Est. (Operativo)", "Meses"]
     pdf.set_font("helvetica", "B", 8); pdf.set_fill_color(213, 219, 219); pdf.set_text_color(0, 0, 0)
@@ -662,7 +654,7 @@ if not df_c.empty:
                                    },
                                    color_discrete_map={"Días desde último envío": COLOR_VERDE_IRIDEM, "días desde ingreso (Diagnóstico)": COLOR_GRIS_IRIDEM})
                 fig_barras.add_hline(y=90, line_color="#ff7f7f", line_width=2)
-                fig_barras.update_layout(xaxis_tickangle=-45, height=400, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                fig_barras.update_layout(xaxis_tickangle=-45, height=400, paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO)
                 evento_clic = st.plotly_chart(fig_barras, use_container_width=True, on_select="rerun", key="grafico_barras_ind")
                 if evento_clic and evento_clic.selection and len(evento_clic.selection.points) > 0:
                     st.session_state.caso_seleccionado = evento_clic.selection.points[0]['x']
@@ -687,7 +679,8 @@ if not df_c.empty:
                     height=300, 
                     showlegend=True, 
                     legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
-                    paper_bgcolor='rgba(0,0,0,0)'
+                    paper_bgcolor=COLOR_GRIS_FONDO,
+                    plot_bgcolor=COLOR_GRIS_FONDO
                 )
                 st.plotly_chart(fig_torta, use_container_width=True)
                 st.write(f"<div style='margin-top: 10px; text-align: center;'><b>Total: {cumple_count + no_cumple_count} casos</b></div>", unsafe_allow_html=True)
@@ -816,7 +809,7 @@ if not df_c.empty:
                 st.subheader("📋 Próximas Entregas (Ordenadas por Venc. 3m)")
                 st.dataframe(df_maestro_vista[["Caso", "Próximo Informe", "F. Límite (Teo)", "Venc. (3m)", "Estado (Operativo)"]], use_container_width=True, hide_index=True)
                 try:
-                    pdf_ejecutivo = generar_pdf_visual(prof_sel, df_maestro_vista, data_grafico_barras, cumple_count, no_cumple_count)
+                    pdf_ejecutivo = generar_pdf_visual(prof_sel, df_maestro_vista, cumple_count, no_cumple_count)
                     st.download_button("📥 Descargar Reporte Ejecutivo (PDF)", pdf_ejecutivo, f"Reporte_{prof_sel}.pdf")
                 except Exception as e:
                     st.info(f"Reporte PDF no disponible: {e}")
@@ -898,7 +891,7 @@ if not df_c.empty:
                 fig_comp = px.bar(pd.DataFrame(data_profesionales), x="Profesional", y=["Al día", "Fuera de plazo"], 
                                   color_discrete_map={"Al día": COLOR_VERDE_IRIDEM, "Fuera de plazo": COLOR_GRIS_IRIDEM}, 
                                   barmode="group", text_auto=True)
-                fig_comp.update_layout(xaxis_tickangle=-45, height=400, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                fig_comp.update_layout(xaxis_tickangle=-45, height=400, paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO)
                 y_total_fijo = max([max(fp["Al día"], fp["Fuera de plazo"]) for fp in data_profesionales], default=0) + 3
                 y_total_fijo = max(y_total_fijo, 22)
                 for fila_prof in data_profesionales:
@@ -911,7 +904,7 @@ if not df_c.empty:
                 st.plotly_chart(fig_comp, use_container_width=True)
             with col_g2:
                 fig_global_pie = go.Figure(data=[go.Pie(labels=['Al día', 'Fuera de plazo'], values=[global_cumple, global_atraso], hole=.5, marker_colors=[COLOR_VERDE_IRIDEM, COLOR_GRIS_IRIDEM])])
-                fig_global_pie.update_layout(height=350, showlegend=True, legend=dict(orientation="h", y=-0.1, xanchor="center", x=0.5), paper_bgcolor='rgba(0,0,0,0)')
+                fig_global_pie.update_layout(height=350, showlegend=True, legend=dict(orientation="h", y=-0.1, xanchor="center", x=0.5), paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO)
                 st.plotly_chart(fig_global_pie, use_container_width=True)
 
             st.divider()
@@ -964,8 +957,8 @@ if not df_c.empty:
             fig_conteo_dupla.update_layout(
                 xaxis_tickangle=-45, 
                 height=350, 
-                paper_bgcolor='rgba(0,0,0,0)', 
-                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor=COLOR_GRIS_FONDO, 
+                plot_bgcolor=COLOR_GRIS_FONDO,
                 yaxis_title="N° de Casos", 
                 xaxis_title="",
                 yaxis=dict(range=[0, max_casos * 1.25]),
