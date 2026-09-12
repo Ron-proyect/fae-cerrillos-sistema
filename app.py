@@ -587,12 +587,17 @@ if not df_c.empty:
     with tab_ind:
         st.subheader("🔍 Consulta por Profesional")
         if st.session_state.user_role == "admin":
-            lista_profs_f = sorted(df_c['Profesional'].unique())
-            if st.session_state.prof_seleccionado_ind not in lista_profs_f:
-                st.session_state.prof_seleccionado_ind = lista_profs_f[0]
-            idx_prof = lista_profs_f.index(st.session_state.prof_seleccionado_ind)
-            prof_sel = st.selectbox("Selecciona Profesional:", lista_profs_f, index=idx_prof)
-            st.session_state.prof_seleccionado_ind = prof_sel
+         if st.session_state.user_role == "admin":
+    lista_profs_f = sorted(df_c['Profesional'].unique())
+    if st.session_state.prof_seleccionado_ind not in lista_profs_f:
+        st.session_state.prof_seleccionado_ind = lista_profs_f[0]
+    
+    # Añadimos un key para que Streamlit sincronice el estado al instante
+    prof_sel = st.selectbox(
+        "Selecciona Profesional:", 
+        lista_profs_f, 
+        key="prof_seleccionado_ind"
+    )
         else:
             prof_sel = st.session_state.user_name
             st.info(f"Visualizando casos de: **{prof_sel}**")
