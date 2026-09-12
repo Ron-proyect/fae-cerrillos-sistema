@@ -661,15 +661,15 @@ if not df_c.empty:
                 fig_barras.add_hline(y=90, line_color="#ff7f7f", line_width=2)
                 fig_barras.add_hline(y=80, line_color="#f1c40f", line_width=2, line_dash="dash")
                 
-                # Anotaciones flotando fuera del gráfico (en la derecha)
+                # Anotaciones flotando fuera del gráfico (en la derecha) SIN negrita y con la palabra "días"
                 fig_barras.add_annotation(
                     x=1.01, y=90, xref="paper", yref="y",
-                    text="<b>Límite (90)</b>", showarrow=False, xanchor="left",
+                    text="Límite (90 días)", showarrow=False, xanchor="left",
                     font=dict(color="#ff7f7f", size=13)
                 )
                 fig_barras.add_annotation(
                     x=1.01, y=80, xref="paper", yref="y",
-                    text="<b>Alerta (80)</b>", showarrow=False, xanchor="left",
+                    text="Alerta (80 días)", showarrow=False, xanchor="left",
                     font=dict(color="#d4ac0d", size=13)
                 )
 
@@ -1133,7 +1133,7 @@ if not df_c.empty:
                                     supabase.table("lista_espera").delete().match({
                                         "Nombres": fila_le.get('Nombres'),
                                         "Apellido_Paterno": fila_le.get('Apellido_Paterno'),
-                                        "Apellido_Materno": list_le.get('Apellido_Materno'),
+                                        "Apellido_Materno": fila_le.get('Apellido_Materno'),
                                     }).execute()
 
                                 st.success(f"✅ Caso '{caso_nombre_nuevo}' registrado y eliminado de la Lista de Espera")
