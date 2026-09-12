@@ -657,13 +657,18 @@ if not df_c.empty:
                                    },
                                    color_discrete_map={"Días desde último envío": COLOR_VERDE_IRIDEM, "días desde ingreso (Diagnóstico)": COLOR_GRIS_IRIDEM})
                 
-                # Línea roja para el límite de los 90 días (anotación a la izquierda)
-                fig_barras.add_hline(y=90, line_color="#ff7f7f", line_width=2, annotation_text="Límite (90 días)", annotation_position="top left")
-                # Línea amarilla discontinua para la alerta a los 80 días (anotación a la izquierda)
-                fig_barras.add_hline(y=80, line_color="#f1c40f", line_width=2, line_dash="dash", annotation_text="Alerta (80 días)", annotation_position="bottom left")
+                # Líneas de referencia con la etiqueta situada a la derecha superior (top right) para evitar trasposición en la izquierda
+                fig_barras.add_hline(y=90, line_color="#ff7f7f", line_width=2, annotation_text="Límite (90 días)", annotation_position="top right")
+                fig_barras.add_hline(y=80, line_color="#f1c40f", line_width=2, line_dash="dash", annotation_text="Alerta (80 días)", annotation_position="bottom right")
 
-                # Altura aumentada a 480 para más espacio vertical
-                fig_barras.update_layout(xaxis_tickangle=-45, height=480, paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO)
+                # Altura reducida a 380 píxeles
+                fig_barras.update_layout(
+                    xaxis_tickangle=-45, 
+                    height=380, 
+                    paper_bgcolor=COLOR_GRIS_FONDO, 
+                    plot_bgcolor=COLOR_GRIS_FONDO,
+                    margin=dict(t=30, b=40, l=40, r=40)
+                )
                 
                 evento_clic = st.plotly_chart(fig_barras, use_container_width=True, on_select="rerun", key="grafico_barras_ind")
                 if evento_clic and evento_clic.selection and len(evento_clic.selection.points) > 0:
