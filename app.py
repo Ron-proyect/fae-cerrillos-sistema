@@ -657,17 +657,30 @@ if not df_c.empty:
                                    },
                                    color_discrete_map={"Días desde último envío": COLOR_VERDE_IRIDEM, "días desde ingreso (Diagnóstico)": COLOR_GRIS_IRIDEM})
                 
-                # Líneas de referencia con la etiqueta situada a la derecha superior (top right) para evitar trasposición en la izquierda
-                fig_barras.add_hline(y=90, line_color="#ff7f7f", line_width=2, annotation_text="Límite (90 días)", annotation_position="top right")
-                fig_barras.add_hline(y=80, line_color="#f1c40f", line_width=2, line_dash="dash", annotation_text="Alerta (80 días)", annotation_position="bottom right")
+                # --- NUEVA ESTRATEGIA PARA LAS ETIQUETAS ---
+                # 1. Dibujamos las líneas solas
+                fig_barras.add_hline(y=90, line_color="#ff7f7f", line_width=2)
+                fig_barras.add_hline(y=80, line_color="#f1c40f", line_width=2, line_dash="dash")
+                
+                # 2. Agregamos las anotaciones flotando fuera del gráfico (en la derecha)
+                fig_barras.add_annotation(
+                    x=1.01, y=90, xref="paper", yref="y",
+                    text="<b>Límite (90)</b>", showarrow=False, xanchor="left",
+                    font=dict(color="#ff7f7f", size=13)
+                )
+                fig_barras.add_annotation(
+                    x=1.01, y=80, xref="paper", yref="y",
+                    text="<b>Alerta (80)</b>", showarrow=False, xanchor="left",
+                    font=dict(color="#d4ac0d", size=13) # un amarillo más oscuro para mejor lectura
+                )
 
-                # Altura reducida a 380 píxeles
+                # Altura a 400 y ampliamos el margen derecho (r=100) para que quepan los textos externos
                 fig_barras.update_layout(
                     xaxis_tickangle=-45, 
-                    height=380, 
+                    height=400, 
                     paper_bgcolor=COLOR_GRIS_FONDO, 
                     plot_bgcolor=COLOR_GRIS_FONDO,
-                    margin=dict(t=30, b=40, l=40, r=40)
+                    margin=dict(t=30, b=40, l=40, r=100)
                 )
                 
                 evento_clic = st.plotly_chart(fig_barras, use_container_width=True, on_select="rerun", key="grafico_barras_ind")
