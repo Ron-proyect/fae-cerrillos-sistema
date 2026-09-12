@@ -657,12 +657,11 @@ if not df_c.empty:
                                    },
                                    color_discrete_map={"Días desde último envío": COLOR_VERDE_IRIDEM, "días desde ingreso (Diagnóstico)": COLOR_GRIS_IRIDEM})
                 
-                # --- NUEVA ESTRATEGIA PARA LAS ETIQUETAS ---
-                # 1. Dibujamos las líneas solas
+                # Líneas de referencia
                 fig_barras.add_hline(y=90, line_color="#ff7f7f", line_width=2)
                 fig_barras.add_hline(y=80, line_color="#f1c40f", line_width=2, line_dash="dash")
                 
-                # 2. Agregamos las anotaciones flotando fuera del gráfico (en la derecha)
+                # Anotaciones flotando fuera del gráfico (en la derecha)
                 fig_barras.add_annotation(
                     x=1.01, y=90, xref="paper", yref="y",
                     text="<b>Límite (90)</b>", showarrow=False, xanchor="left",
@@ -671,16 +670,22 @@ if not df_c.empty:
                 fig_barras.add_annotation(
                     x=1.01, y=80, xref="paper", yref="y",
                     text="<b>Alerta (80)</b>", showarrow=False, xanchor="left",
-                    font=dict(color="#d4ac0d", size=13) # un amarillo más oscuro para mejor lectura
+                    font=dict(color="#d4ac0d", size=13)
                 )
 
-                # Altura a 400 y ampliamos el margen derecho (r=100) para que quepan los textos externos
+                # Altura a 400, ampliamos margen derecho y bajamos la leyenda
                 fig_barras.update_layout(
                     xaxis_tickangle=-45, 
                     height=400, 
                     paper_bgcolor=COLOR_GRIS_FONDO, 
                     plot_bgcolor=COLOR_GRIS_FONDO,
-                    margin=dict(t=30, b=40, l=40, r=100)
+                    margin=dict(t=30, b=40, l=40, r=120),
+                    legend=dict(
+                        yanchor="top",
+                        y=0.4,       # Esto baja la leyenda hacia la mitad inferior
+                        xanchor="left",
+                        x=1.05       # La mantiene en el margen derecho
+                    )
                 )
                 
                 evento_clic = st.plotly_chart(fig_barras, use_container_width=True, on_select="rerun", key="grafico_barras_ind")
@@ -1128,7 +1133,7 @@ if not df_c.empty:
                                     supabase.table("lista_espera").delete().match({
                                         "Nombres": fila_le.get('Nombres'),
                                         "Apellido_Paterno": fila_le.get('Apellido_Paterno'),
-                                        "Apellido_Materno": fila_le.get('Apellido_Materno'),
+                                        "Apellido_Materno": list_le.get('Apellido_Materno'),
                                     }).execute()
 
                                 st.success(f"✅ Caso '{caso_nombre_nuevo}' registrado y eliminado de la Lista de Espera")
