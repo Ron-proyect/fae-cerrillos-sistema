@@ -591,11 +591,14 @@ if not df_c.empty:
             if st.session_state.prof_seleccionado_ind not in lista_profs_f:
                 st.session_state.prof_seleccionado_ind = lista_profs_f[0]
             
+            # --- NUEVA LÓGICA PARA MANTENER ESTADO ---
+            idx_prof = lista_profs_f.index(st.session_state.prof_seleccionado_ind)
             prof_sel = st.selectbox(
                 "Selecciona Profesional:", 
                 lista_profs_f, 
-                key="prof_seleccionado_ind"
+                index=idx_prof
             )
+            st.session_state.prof_seleccionado_ind = prof_sel
         else:
             prof_sel = st.session_state.user_name
             st.info(f"Visualizando casos de: **{prof_sel}**")
