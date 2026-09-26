@@ -191,6 +191,13 @@ def generar_calendario_mensual(año, mes, dict_bloqueos):
     horas_turno_semana = {d: {"mañana": 0, "tarde": 0} for d in DUPLAS}
     semana_actual = None
 
+    # --- Alternancia del horario de los BLOQUES DOBLES, por día de la semana ---
+    # Registra en qué turno (mañana/tarde) tuvo cada dupla su último bloque doble
+    # en cada día de la semana (Lun..Vie), a lo largo de TODO el mes. Así, si a una
+    # dupla le vuelve a tocar doble el mismo día de la semana (ej. otro miércoles),
+    # se prioriza invertir el horario en vez de repetir siempre el mismo tramo.
+    ultimo_turno_doble_dia_semana = {d: {dia: None for dia in DIAS_NOMBRE} for d in DUPLAS}
+
     for dia in dias_mes:
         f_str = dia["fecha_str"]; n_dia = dia["nombre_dia"]; sem = dia["semana"]
 
@@ -259,15 +266,24 @@ def generar_calendario_mensual(año, mes, dict_bloqueos):
             if continuar_racha:
                 d_doble = racha_doble_dupla
             else:
-                # Ordenar: primero los que tienen menos de 10 dobles, luego los que NO
-                # repitieron turno la semana pasada, luego por uso hoy/mes para diversidad
-                candidatos_dobles.sort(key=lambda x: (
+                # Primero se intenta SOLO con quienes invertirían el turno respecto a su
+                # último doble el mismo día de semana (ej. si el miércoles pasado fue
+                # 9-11, hoy se prioriza que sea 14-17). Si nadie cumple eso (ej. solo
+                # queda 1 candidata elegible ese día), se cae al resto de candidatas.
+                invierten = [c for c in candidatos_dobles if ultimo_turno_doble_dia_semana[c][n_dia] != turno_actual]
+                pool_dobles = invierten if invierten else candidatos_dobles
+
+                # Dentro de ese pool: primero los que no llegaron al mínimo de 10 dobles,
+                # luego por cantidad de dobles acumulados, turno de la semana pasada,
+                # y uso hoy/mes para diversidad
+                pool_dobles.sort(key=lambda x: (
                     uso_dobles_mensual[x] >= 10,
                     uso_dobles_mensual[x],
                     1 if turno_previo[x] == turno_actual else 0,
                     uso_hoy[x],
                     uso_mensual[x],
                 ))
+                d_doble = pool_dobles[0] if pool_dobles else None
                 d_doble = candidatos_dobles[0] if candidatos_dobles else None
 
             if d_doble:
@@ -283,7 +299,11 @@ def generar_calendario_mensual(año, mes, dict_bloqueos):
                 if d_doble == racha_doble_dupla and racha_doble_idx == idx_b - 1:
                     racha_doble_len += 1
                 else:
+                    # Es el INICIO de una racha nueva (no la continuación de la anterior):
+                    # se registra el turno para poder invertirlo la próxima vez que a esta
+                    # dupla le toque doble el mismo día de la semana.
                     racha_doble_len = 1
+                    ultimo_turno_doble_dia_semana[d_doble][n_dia] = turno_actual
                 racha_doble_dupla = d_doble
                 racha_doble_idx = idx_b
             else:
@@ -423,7 +443,10 @@ def exportar_excel_visual(df_total, dict_bloqueos):
             col_start = i * 4; fecha_act = [f for f in fechas if f.startswith(dia_nom)]
             if fecha_act:
                 current_f_str = fecha_act[0]; t_asignado = df_sem[df_sem["Fecha"] == current_f_str]["T_Diario"].iloc[0]
-                label_t = "Disponible" if t_asignado in ["T Disp", "CERRADO"] else t_asignado
+                if t_asignado in ["T Disp", "CERRADO"]:
+                    label_t = "Disponible"
+                else:
+                    label_t = f"{t_asignado}({obtener_iniciales(t_asignado)})"
                 worksheet.merge_range(curr_row, col_start, curr_row, col_start + 3, current_f_str, fmt_date); worksheet.merge_range(curr_row + 1, col_start, curr_row + 1, col_start + 3, f"T: {label_t}", fmt_terrain); worksheet.write(curr_row + 2, col_start, "Bloque", fmt_header); worksheet.write(curr_row + 2, col_start + 1, "S1", fmt_header); worksheet.write(curr_row + 2, col_start + 2, "S2", fmt_header); worksheet.write(curr_row + 2, col_start + 3, "S3", fmt_header)
                 for b_idx, bloque in enumerate(BLOQUES):
                     r = curr_row + 3 + b_idx; worksheet.write(r, col_start, bloque, fmt_block)
@@ -618,7 +641,10 @@ def render_gestion_salas(supabase, es_admin=True):
                 t_asig = df_sem[df_sem["Fecha"] == cur_f]["T_Diario"].iloc[0]
                 with cols[i]:
                     st.markdown(f"<p class='d-header'>{cur_f}</p>", unsafe_allow_html=True)
-                    label_t = "Disponible" if t_asig in ["T Disp", "CERRADO"] else t_asig
+                    if t_asig in ["T Disp", "CERRADO"]:
+                        label_t = "Disponible"
+                    else:
+                        label_t = f"{t_asig}({obtener_iniciales(t_asig)})"
                     st.markdown(f"<p class='t-header' style='color:{COLORES_DUPLAS.get(t_asig, '#757575')}'>T: {label_t}</p>", unsafe_allow_html=True)
                     st.markdown(render_tabla_dia(df_sem[df_sem["Fecha"] == cur_f], cur_f, m_data['bloqueos'], foco_duplas), unsafe_allow_html=True)
         st.markdown(render_resumen_semanal(df_sem, foco_duplas), unsafe_allow_html=True)
