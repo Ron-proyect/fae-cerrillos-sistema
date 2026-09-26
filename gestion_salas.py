@@ -232,6 +232,12 @@ def generar_calendario_mensual(año, mes, dict_bloqueos):
         uso_hoy = {d: 0 for d in DUPLAS} # Reset diario para obligar a rotar duplas
         horas_trabajadas_hoy = {d: 0 for d in DUPLAS}  # bloques horarios distintos trabajados hoy (tope MAX_HORAS_SALA_DIA)
 
+        # Duplas que trabajaron (en cualquier sala, doble o individual) en el bloque
+        # inmediatamente anterior de este mismo día. Se usa para priorizar que, si a una
+        # dupla le toca más de un bloque individual en el día, esos bloques queden
+        # seguidos en vez de salteados.
+        duplas_bloque_anterior = set()
+
         # --- Continuidad de bloques dobles dentro del día ---
         # Si un bloque queda con doble, se intenta que la MISMA dupla siga en el/los
         # bloque(s) inmediatamente siguiente(s) (hasta el tope MAX_DOBLES_CONSECUTIVOS_DIA)
@@ -255,8 +261,9 @@ def generar_calendario_mensual(año, mes, dict_bloqueos):
             if f_str in dict_bloqueos and b in dict_bloqueos[f_str]['bloques']:
                 motivo = dict_bloqueos[f_str]['motivo']
                 for s in SALAS: data.append({"Semana": sem, "Fecha": f_str, "T_Diario": t_diario, "Bloque": b, "Ubicación": s, "Dupla": motivo})
-                # Un bloque bloqueado corta cualquier racha de dobles en curso
+                # Un bloque bloqueado corta cualquier racha de dobles y de continuidad individual en curso
                 racha_doble_dupla = None; racha_doble_len = 0; racha_doble_idx = None
+                duplas_bloque_anterior = set()
                 continue
 
             asignacion_bloque = {"S1": "---", "S2": "---", "S3": "---"}
@@ -327,11 +334,15 @@ def generar_calendario_mensual(año, mes, dict_bloqueos):
 
             # 2. LLENADO TOTAL INDIVIDUAL (Incluye duplas en Teletrabajo)
             # Se descarta primero a quien ya llegó al tope diario de horas
-            # (MAX_HORAS_SALA_DIA); entre el resto, ordenamos por uso_hoy para obligar
-            # a rotar y no concentrar solo dos duplas, y entre empatados se prioriza a
-            # quien NO tuvo este mismo turno la semana pasada
+            # (MAX_HORAS_SALA_DIA). Entre el resto, se prioriza a quien YA trabajó en
+            # el bloque inmediatamente anterior de hoy (para que, si a una dupla le
+            # toca más de un bloque individual en el día, queden seguidos y no
+            # salteados); luego, entre empatados, por uso_hoy para obligar a rotar y no
+            # concentrar solo dos duplas, y por último a quien NO tuvo este mismo turno
+            # la semana pasada
             candidatos_bloque = [c for c in candidatos_bloque if horas_trabajadas_hoy[c] < MAX_HORAS_SALA_DIA]
             candidatos_bloque.sort(key=lambda x: (
+                0 if x in duplas_bloque_anterior else 1,
                 uso_hoy[x],
                 1 if turno_previo[x] == turno_actual else 0,
                 uso_mensual[x],
@@ -356,6 +367,8 @@ def generar_calendario_mensual(año, mes, dict_bloqueos):
             # Una dupla que trabajó en 1 o 2 salas este bloque solo consume 1 hora real
             for d_b in duplas_en_bloque:
                 horas_trabajadas_hoy[d_b] += 1
+            # Se registra para priorizar continuidad en el bloque siguiente
+            duplas_bloque_anterior = duplas_en_bloque
 
     return pd.DataFrame(data), reuniones_t
 
