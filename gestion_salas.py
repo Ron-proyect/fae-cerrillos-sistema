@@ -607,13 +607,6 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
         datos_previos = cargar_datos(supabase)
         if datos_previos:
             st.session_state.meses_data = datos_previos
-            for m_id in st.session_state.meses_data:
-                m_data = st.session_state.meses_data[m_id]
-                if 'Dupla' in m_data['df'].columns:
-                    if m_data['df']['Dupla'].isin(["R. Técnica", "DÍA DE LA NIÑEZ", "REUNIÓN TÉCNICA"]).any():
-                        df_new, rt_new = generar_calendario_mensual(m_data['año'], m_data['mes'], m_data['bloqueos'])
-                        m_data['df'] = df_new; m_data['rt'] = rt_new
-            guardar_datos(supabase)
         else:
             st.session_state.meses_data = {}
             curr_f = datetime(AÑO_INICIO, MES_INICIO, 1)
