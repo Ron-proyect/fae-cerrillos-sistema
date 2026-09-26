@@ -171,10 +171,16 @@ def cargar_duplas_config():
         response = supabase.table("config_duplas").select("*").execute()
         df = pd.DataFrame(response.data)
         if df.empty:
-            return DUPLAS_MAPA_INICIAL
-        return dict(zip(df['dupla'], df['integrantes']))
+            return DUPLAS_MAPA_INICIAL.copy()
+        resultado = DUPLAS_MAPA_INICIAL.copy()
+        for _, row in df.iterrows():
+            d_key = row.get('dupla')
+            d_val = row.get('integrantes')
+            if d_key and d_val:
+                resultado[d_key] = d_val
+        return resultado
     except:
-        return DUPLAS_MAPA_INICIAL
+        return DUPLAS_MAPA_INICIAL.copy()
 
 def guardar_duplas_config(mapping_dict):
     try:
@@ -183,6 +189,7 @@ def guardar_duplas_config(mapping_dict):
     except Exception as e:
         st.sidebar.error(f"Error al guardar duplas: {e}")
 
+# Carga dinámica y fresca de las duplas en cada ejecución
 duplas_nombres = cargar_duplas_config()
 
 def limpiar_y_asegurar_unicos(columnas):
@@ -468,32 +475,26 @@ df_c = cargar_casos()
 df_e = cargar_entregas()
 
 # --- PUENTE INTELIGENTE DE DUPLAS ---
-# Permitir que los casos existentes (con nombres antiguos) coincidan con el nuevo nombre configurado en la duplas_nombres
-# Mapeo histórico inverso para asociar nombres antiguos/nuevos a su respectiva Dupla ID (Dupla 1, Dupla 2, etc.)
 def obtener_dupla_id_para_caso(prof_en_caso):
     if not isinstance(prof_en_caso, str): return prof_en_caso
     p_clean = prof_en_caso.strip().lower()
     for d_id, integrantes in duplas_nombres.items():
         if p_clean == integrantes.strip().lower() or p_clean == d_id.lower():
             return d_id
-    # Intentar buscar por coincidencia parcial (ej. si el caso tiene "bruno" y la dupla tiene "Bruno")
     for d_id, integrantes in duplas_nombres.items():
         primer_nombre = integrantes.split("-")[0].split()[0].lower()
         if primer_nombre in p_clean:
             return d_id
-    # Fallback al valor original de la BD si no hay coincidencia
     for d_id, init_val in DUPLAS_MAPA_INICIAL.items():
         if p_clean == init_val.strip().lower():
             return d_id
     return prof_en_caso
 
 if not df_c.empty:
-    # Creamos una columna auxiliar estandarizada para filtrar de forma uniforme
     df_c['Dupla_ID_Asignada'] = df_c['Profesional'].apply(obtener_dupla_id_para_caso)
 
 df_c_sidebar = df_c.copy()
 if st.session_state.user_role != "admin":
-    # Filtrar según el nombre del usuario logueado mapeado a su dupla
     mi_dupla_id = obtener_dupla_id_para_caso(st.session_state.user_name)
     df_c_sidebar = df_c_sidebar[df_c_sidebar['Dupla_ID_Asignada'] == mi_dupla_id]
 
@@ -550,7 +551,6 @@ if st.session_state.user_role == "admin":
                             break
 
                     nuevo_prof_elegido = st.selectbox("Asignar Dupla", opciones_edit, index=idx_default)
-                    # Al editar, guardamos el nombre actual de los integrantes configurados para esa dupla
                     dupla_id_elegida = nuevo_prof_elegido.split(":")[0].strip()
                     nuevo_prof = duplas_nombres.get(dupla_id_elegida, nuevo_prof_elegido.split(": ")[1])
                     
@@ -639,7 +639,6 @@ if not df_c.empty:
     with tab_ind:
         st.subheader("🔍 Consulta por Duplas")
         
-        # Opciones para el selector principal ordenadas de Dupla 1 a 7 con los nombres actualizados
         opciones_duplas_vista = []
         mapping_opciones = {}
         for dupla_id in [f"Dupla {i}" for i in range(1, 8)]:
@@ -657,7 +656,6 @@ if not df_c.empty:
             prof_sel = duplas_nombres.get(dupla_sel_id, st.session_state.user_name)
             st.info(f"Visualizando casos de: **{dupla_sel_id} ({prof_sel})**")
             
-        # Filtramos usando el ID de la dupla para garantizar que aparezcan los casos sin importar el nombre escrito en la BD
         df_c_filtrado = df_c[df_c['Dupla_ID_Asignada'] == dupla_sel_id]
 
         if not df_c_filtrado.empty:
@@ -1000,7 +998,6 @@ if not df_c.empty:
                 return f"{d_id} ({integrantes})"
 
             df_c_tabla['Profesional'] = df_c_tabla['Profesional'].apply(traducir_prof_tabla)
-            # Ocultamos la columna auxiliar del dataframe visual final
             df_c_tabla_mostrar = df_c_tabla.drop(columns=['Dupla_ID_Asignada'], errors='ignore')
             st.dataframe(df_c_tabla_mostrar, use_container_width=True, hide_index=True)
             
