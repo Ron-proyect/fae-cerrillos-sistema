@@ -40,7 +40,7 @@ HORARIOS_BLOQUES = {
 
 NOMBRES_DUPLAS = {
     "D1": "Francisca-Tiare", "D2": "Daniela-Paula", "D3": "Marcelo-Cony",
-    "D4": "Bruno-Cassandra", "D5": "Maida-Vale", "D6": "Laura-Alan", "D7": "Sol-Fran"
+    "D4": "Bruno-Ignacia", "D5": "Maida-Vale", "D6": "Laura-Alan", "D7": "Sol-Fran"
 }
 
 def obtener_iniciales(id_dupla):
