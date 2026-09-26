@@ -39,8 +39,8 @@ HORARIOS_BLOQUES = {
 }
 
 NOMBRES_DUPLAS = {
-    "D1": "Francisca-Tiare", "D2": "Daniela-Paula", "D3": "Marcelo-Cony",
-    "D4": "Bruno-Ignacia", "D5": "Maida-Vale", "D6": "Laura-Alan", "D7": "Sol-Fran"
+    "D1": "Bruno-Ignacia", "D2": "Daniela-Paula", "D3": "Francisca-Tiare",
+    "D4": "Laura-Alan", "D5": "Maida-Vale", "D6": "Marcelo-Cony", "D7": "Sol-Fran"
 }
 
 def obtener_iniciales(id_dupla):
@@ -62,11 +62,11 @@ DIAS_NOMBRE = ["Lun", "Mar", "Mié", "Jue", "Vie"]
 
 # RESTRICCIÓN: Teletrabajo (TT) - Bruno (D4) Lunes y Viernes
 TELETRABAJO = {
-    "Lun": ["D1", "D7", "D4"],
+    "Lun": ["D3", "D7", "D1", "D4"],
     "Mar": [],
-    "Mié": ["D1", "D2", "D3"],
-    "Jue": ["D3", "D5", "D6"],
-    "Vie": ["D2", "D5", "D7", "D4"]
+    "Mié": ["D3", "D2", "D6"],
+    "Jue": ["D6", "D5", "D4"],
+    "Vie": ["D2", "D5", "D7", "D1"]
 }
 
 # --- 2. LÓGICA DE PERSISTENCIA (Supabase) ---
