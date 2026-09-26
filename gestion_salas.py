@@ -423,10 +423,7 @@ def exportar_excel_visual(df_total, dict_bloqueos):
             col_start = i * 4; fecha_act = [f for f in fechas if f.startswith(dia_nom)]
             if fecha_act:
                 current_f_str = fecha_act[0]; t_asignado = df_sem[df_sem["Fecha"] == current_f_str]["T_Diario"].iloc[0]
-                if t_asignado in ["T Disp", "CERRADO"]:
-                    label_t = "Disponible"
-                else:
-                    label_t = f"{t_asignado}({obtener_iniciales(t_asignado)})"
+                label_t = "Disponible" if t_asignado in ["T Disp", "CERRADO"] else t_asignado
                 worksheet.merge_range(curr_row, col_start, curr_row, col_start + 3, current_f_str, fmt_date); worksheet.merge_range(curr_row + 1, col_start, curr_row + 1, col_start + 3, f"T: {label_t}", fmt_terrain); worksheet.write(curr_row + 2, col_start, "Bloque", fmt_header); worksheet.write(curr_row + 2, col_start + 1, "S1", fmt_header); worksheet.write(curr_row + 2, col_start + 2, "S2", fmt_header); worksheet.write(curr_row + 2, col_start + 3, "S3", fmt_header)
                 for b_idx, bloque in enumerate(BLOQUES):
                     r = curr_row + 3 + b_idx; worksheet.write(r, col_start, bloque, fmt_block)
@@ -621,10 +618,7 @@ def render_gestion_salas(supabase, es_admin=True):
                 t_asig = df_sem[df_sem["Fecha"] == cur_f]["T_Diario"].iloc[0]
                 with cols[i]:
                     st.markdown(f"<p class='d-header'>{cur_f}</p>", unsafe_allow_html=True)
-                    if t_asig in ["T Disp", "CERRADO"]:
-                        label_t = "Disponible"
-                    else:
-                        label_t = f"{t_asig}({obtener_iniciales(t_asig)})"
+                    label_t = "Disponible" if t_asig in ["T Disp", "CERRADO"] else t_asig
                     st.markdown(f"<p class='t-header' style='color:{COLORES_DUPLAS.get(t_asig, '#757575')}'>T: {label_t}</p>", unsafe_allow_html=True)
                     st.markdown(render_tabla_dia(df_sem[df_sem["Fecha"] == cur_f], cur_f, m_data['bloqueos'], foco_duplas), unsafe_allow_html=True)
         st.markdown(render_resumen_semanal(df_sem, foco_duplas), unsafe_allow_html=True)
