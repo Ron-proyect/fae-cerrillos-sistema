@@ -7,3 +7,6 @@ docxtpl
 extra-streamlit-components
 supabase
 openpyxl
+xlsxwriter
+altair
+icalendar
