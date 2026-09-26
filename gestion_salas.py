@@ -446,17 +446,20 @@ def render_resumen_semanal(df_sem, foco_duplas=[]):
 def mostrar_grafico_comparativo(df_total, foco_duplas=[]):
     t_sala, h_real, dbl, _ = calcular_metricas(df_total)
     plot_data = []
+    orden_etiquetas = []
     for d in DUPLAS:
         if not foco_duplas or d in foco_duplas:
-            plot_data.append({"Dupla": d, "Valor": t_sala.get(d, 0), "Tipo": "Bloques Sala"})
-            plot_data.append({"Dupla": d, "Valor": h_real.get(d, 0), "Tipo": "Horas Reales"})
-            plot_data.append({"Dupla": d, "Valor": dbl.get(d, 0), "Tipo": "Bloques Dobles"})
+            etiqueta = f"{d} ({obtener_iniciales(d)})"
+            orden_etiquetas.append(etiqueta)
+            plot_data.append({"Dupla": etiqueta, "Valor": t_sala.get(d, 0), "Tipo": "Bloques Sala"})
+            plot_data.append({"Dupla": etiqueta, "Valor": h_real.get(d, 0), "Tipo": "Horas Reales"})
+            plot_data.append({"Dupla": etiqueta, "Valor": dbl.get(d, 0), "Tipo": "Bloques Dobles"})
     if plot_data:
         df_plot = pd.DataFrame(plot_data)
         color_scale = alt.Scale(domain=['Horas Reales', 'Bloques Sala', 'Bloques Dobles'], range=['#D4E157', '#BDBDBD', '#81D4FA'])
         bars = alt.Chart(df_plot).mark_bar().encode(x=alt.X('Tipo:N', title=None, axis=alt.Axis(labels=False)), y=alt.Y('Valor:Q', title=None), color=alt.Color('Tipo:N', scale=color_scale, legend=alt.Legend(title="Métrica", orient="top")))
         text = alt.Chart(df_plot).mark_text(align='center', baseline='bottom', dy=-2, fontWeight='normal', fontSize=10, color='black').encode(x=alt.X('Tipo:N'), y=alt.Y('Valor:Q'), text=alt.Text('Valor:Q'))
-        final_chart = alt.layer(bars, text).properties(width=70, height=140).facet(column=alt.Column('Dupla:N', title=None, header=alt.Header(labelOrient='bottom', labelFontSize=11, labelFontWeight='bold'))).configure_view(stroke=None)
+        final_chart = alt.layer(bars, text).properties(width=70, height=140).facet(column=alt.Column('Dupla:N', title=None, sort=orden_etiquetas, header=alt.Header(labelOrient='bottom', labelFontSize=11, labelFontWeight='bold'))).configure_view(stroke=None)
         st.altair_chart(final_chart, use_container_width=False)
 
 # --- 7. EXPORTACIÓN EXCEL ---
@@ -717,9 +720,6 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
         if dupla_usuario in DUPLAS:
             st.caption(f"🔎 Tus bloques ({formatear_opcion_dupla(dupla_usuario)}) están destacados abajo.")
 
-        excel_data = exportar_excel_visual(m_data['df'], m_data['bloqueos'])
-        st.download_button(label="📥 Descargar Excel Visual", data=excel_data, file_name=f"calendario_visual_{mes_sel}.xlsx", key="salas_dl_excel")
-
     # --- Vista del calendario (disponible para todos) ---
     st.markdown(render_resumen_mensual(m_data['df'], foco_duplas), unsafe_allow_html=True)
     mostrar_grafico_comparativo(m_data['df'], foco_duplas)
@@ -748,3 +748,10 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
                     st.markdown(f"<p class='t-header' style='color:{COLORES_DUPLAS.get(t_asig, '#757575')}'>T: {label_t}</p>", unsafe_allow_html=True)
                     st.markdown(render_tabla_dia(df_sem[df_sem["Fecha"] == cur_f], cur_f, m_data['bloqueos'], foco_duplas), unsafe_allow_html=True)
         st.markdown(render_resumen_semanal(df_sem, foco_duplas), unsafe_allow_html=True)
+
+    # Para los usuarios que no son administrador, el botón de descarga del Excel
+    # visual queda al final, debajo de todo el calendario.
+    if not es_admin:
+        st.markdown("---")
+        excel_data = exportar_excel_visual(m_data['df'], m_data['bloqueos'])
+        st.download_button(label="📥 Descargar Excel Visual", data=excel_data, file_name=f"calendario_visual_{mes_sel}.xlsx", key="salas_dl_excel")
