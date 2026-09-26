@@ -39,7 +39,7 @@ HORARIOS_BLOQUES = {
 }
 
 NOMBRES_DUPLAS = {
-    "D1": "Bruno-Ignacia", "D2": "Daniela-Paula", "D3": "Francisca-Tiare",
+    "D1": "Bruno-Ignacia A", "D2": "Daniela-Paula", "D3": "Francisca-Tiare",
     "D4": "Laura-Alan", "D5": "Maida-Vale", "D6": "Marcelo-Cony", "D7": "Sol-Fran"
 }
 
