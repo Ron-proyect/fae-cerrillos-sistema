@@ -40,19 +40,17 @@ COLOR_GRIS_FONDO = "#F8F9F9"
 
 SIS_HTML_FILE = "analitica_sis.html"
 
-# Credenciales de acceso originales
 CREDENTIALS = {
     "admin": {"pass": "cerrillos2026", "role": "admin", "name": "Administrador"},
-    "bruno.diaz": {"pass": "fae.cerrillos", "role": "user", "name": "Bruno Diaz-Casandra Mora"},
-    "daniela.paula": {"pass": "fae.cerrillos", "role": "user", "name": "Daniela Izquierdo-Paula Leyton"},
-    "francisca.tiare": {"pass": "fae.cerrillos", "role": "user", "name": "Francisca Salazar-Tiare Riquelme"},
-    "laura.alan": {"pass": "fae.cerrillos", "role": "user", "name": "Laura Arancibia-Alan Zamora"},
-    "maida.valeria": {"pass": "fae.cerrillos", "role": "user", "name": "Maida Muñoz-Valeria Orellana"},
-    "marcelo.maria": {"pass": "fae.cerrillos", "role": "user", "name": "Marcelo Huento-María Constanza Correa"},
-    "solange.francisco": {"pass": "fae.cerrillos", "role": "user", "name": "Solange Alegría-Francisco Carvajal"}
+    "bruno.diaz": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 1"},
+    "daniela.paula": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 2"},
+    "francisca.tiare": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 3"},
+    "laura.alan": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 4"},
+    "maida.valeria": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 5"},
+    "marcelo.maria": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 6"},
+    "solange.francisco": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 7"}
 }
 
-# Mapeo base para conectar Duplas (1 a 7) con los nombres de profesionales actuales en Supabase
 DUPLAS_MAPA_INICIAL = {
     "Dupla 1": "Bruno Diaz-Casandra Mora",
     "Dupla 2": "Daniela Izquierdo-Paula Leyton",
@@ -168,7 +166,6 @@ if not st.session_state.logged_in:
     login_screen()
     st.stop()
 
-# Funciones para manejar la configuración visual de las duplas en memoria/nube sin romper datos
 def cargar_duplas_config():
     try:
         response = supabase.table("config_duplas").select("*").execute()
@@ -187,14 +184,6 @@ def guardar_duplas_config(mapping_dict):
         st.sidebar.error(f"Error al guardar duplas: {e}")
 
 duplas_nombres = cargar_duplas_config()
-
-# Diccionarios inversos para mapear rápido
-def obtener_nombre_completo(prof_bd):
-    """Dado el texto que está en la BD (ej. Bruno Diaz-Casandra Mora), busca su Dupla asociada"""
-    for dupla, integrantes in duplas_nombres.items():
-        if prof_bd.strip().lower() == integrantes.strip().lower() or prof_bd.strip().lower() == dupla.lower():
-            return dupla
-    return prof_bd
 
 def limpiar_y_asegurar_unicos(columnas):
     nombres_limpios = []
@@ -368,11 +357,11 @@ def generar_pdf_cronograma(caso_nombre, f_ingreso, df_hitos):
 
 # --- CONFIGURACIÓN DE ASIGNACIÓN DE PROFESIONALES A DUPLAS EN BARRA LATERAL (ADMIN) ---
 if st.session_state.user_role == "admin":
-    with st.sidebar.expander("⚙️ Asignar Profesionales a Duplas"):
+    with st.sidebar.expander("⚙️ Asignar Profesionales a Duplas", expanded=False):
         nuevo_mapping = {}
         with st.form("form_config_duplas"):
             for dupla_id in [f"Dupla {i}" for i in range(1, 8)]:
-                actual = duplas_nombres.get(dupla_id, "")
+                actual = duplas_nombres.get(dupla_id, DUPLAS_MAPA_INICIAL.get(dupla_id, ""))
                 nuevo_mapping[dupla_id] = st.text_input(f"Integrantes {dupla_id}", value=actual)
             if st.form_submit_button("Guardar Cambios de Duplas"):
                 guardar_duplas_config(nuevo_mapping)
@@ -387,10 +376,8 @@ if st.session_state.user_role == "admin":
         n_codnino = st.text_input("Cod. Niño")
         n_fecnac = st.date_input("Fecha de Nacimiento", datetime.now(), min_value=datetime(1990, 1, 1))
         
-        # Opciones de selección para nuevo caso usando las duplas configuradas
         opciones_duplas_form = [f"{d}: {duplas_nombres.get(d, '')}" for d in [f"Dupla {i}" for i in range(1, 8)]]
         prof_elegido_form = st.selectbox("Asignar Dupla", opciones_duplas_form)
-        # Extraemos el valor real de los integrantes para que se guarde igual en Supabase sin romper nada
         prof = prof_elegido_form.split(": ")[1]
 
         f_ing = st.date_input("Fecha Ingreso", datetime.now())
@@ -477,9 +464,38 @@ if st.session_state.user_role == "admin":
         except Exception as e: 
             st.sidebar.error(f"Error: {e}")
 
-df_c_sidebar = cargar_casos()
+df_c = cargar_casos()
+df_e = cargar_entregas()
+
+# --- PUENTE INTELIGENTE DE DUPLAS ---
+# Permitir que los casos existentes (con nombres antiguos) coincidan con el nuevo nombre configurado en la duplas_nombres
+# Mapeo histórico inverso para asociar nombres antiguos/nuevos a su respectiva Dupla ID (Dupla 1, Dupla 2, etc.)
+def obtener_dupla_id_para_caso(prof_en_caso):
+    if not isinstance(prof_en_caso, str): return prof_en_caso
+    p_clean = prof_en_caso.strip().lower()
+    for d_id, integrantes in duplas_nombres.items():
+        if p_clean == integrantes.strip().lower() or p_clean == d_id.lower():
+            return d_id
+    # Intentar buscar por coincidencia parcial (ej. si el caso tiene "bruno" y la dupla tiene "Bruno")
+    for d_id, integrantes in duplas_nombres.items():
+        primer_nombre = integrantes.split("-")[0].split()[0].lower()
+        if primer_nombre in p_clean:
+            return d_id
+    # Fallback al valor original de la BD si no hay coincidencia
+    for d_id, init_val in DUPLAS_MAPA_INICIAL.items():
+        if p_clean == init_val.strip().lower():
+            return d_id
+    return prof_en_caso
+
+if not df_c.empty:
+    # Creamos una columna auxiliar estandarizada para filtrar de forma uniforme
+    df_c['Dupla_ID_Asignada'] = df_c['Profesional'].apply(obtener_dupla_id_para_caso)
+
+df_c_sidebar = df_c.copy()
 if st.session_state.user_role != "admin":
-    df_c_sidebar = df_c_sidebar[df_c_sidebar['Profesional'] == st.session_state.user_name]
+    # Filtrar según el nombre del usuario logueado mapeado a su dupla
+    mi_dupla_id = obtener_dupla_id_para_caso(st.session_state.user_name)
+    df_c_sidebar = df_c_sidebar[df_c_sidebar['Dupla_ID_Asignada'] == mi_dupla_id]
 
 if st.session_state.user_role == "admin":
     st.sidebar.divider()
@@ -527,15 +543,16 @@ if st.session_state.user_role == "admin":
                     
                     prof_actual_val = datos_actuales['Profesional']
                     opciones_edit = [f"{d}: {duplas_nombres.get(d, '')}" for d in [f"Dupla {i}" for i in range(1, 8)]]
-                    # Seleccionar por defecto la dupla que tenga este profesional
                     idx_default = 0
                     for idx_op, op_val in enumerate(opciones_edit):
-                        if prof_actual_val.lower() in op_val.lower():
+                        if obtener_dupla_id_para_caso(prof_actual_val) in op_val:
                             idx_default = idx_op
                             break
 
                     nuevo_prof_elegido = st.selectbox("Asignar Dupla", opciones_edit, index=idx_default)
-                    nuevo_prof = nuevo_prof_elegido.split(": ")[1]
+                    # Al editar, guardamos el nombre actual de los integrantes configurados para esa dupla
+                    dupla_id_elegida = nuevo_prof_elegido.split(":")[0].strip()
+                    nuevo_prof = duplas_nombres.get(dupla_id_elegida, nuevo_prof_elegido.split(": ")[1])
                     
                     nueva_fecha_ing = st.date_input("Fecha Ingreso", datos_actuales['Fecha Ingreso'])
                     
@@ -607,9 +624,6 @@ if st.sidebar.button("🚪 Cerrar Sesión"):
     st.session_state.logged_in = False
     st.rerun()
 
-df_c = cargar_casos()
-df_e = cargar_entregas()
-
 if not df_c.empty:
     hoy = datetime.now().date()
     
@@ -625,31 +639,26 @@ if not df_c.empty:
     with tab_ind:
         st.subheader("🔍 Consulta por Duplas")
         
-        # Mapeamos los profesionales existentes en la BD a su respectiva Dupla para mostrar en el select
-        profesionales_en_bd = df_c['Profesional'].unique()
-        
-        # Construir lista de selección limpia formateada como "Dupla X: Integrantes"
+        # Opciones para el selector principal ordenadas de Dupla 1 a 7 con los nombres actualizados
         opciones_duplas_vista = []
         mapping_opciones = {}
-        for dupla_id, integrantes in duplas_nombres.items():
+        for dupla_id in [f"Dupla {i}" for i in range(1, 8)]:
+            integrantes = duplas_nombres.get(dupla_id, "")
             etiqueta = f"{dupla_id} ({integrantes})"
             opciones_duplas_vista.append(etiqueta)
-            mapping_opciones[etiqueta] = integrantes
+            mapping_opciones[etiqueta] = dupla_id
 
         if st.session_state.user_role == "admin":
-            if not opciones_duplas_vista:
-                opciones_duplas_vista = ["Dupla 1"]
-            
             sel_etiqueta = st.selectbox("Selecciona Dupla:", opciones_duplas_vista)
-            prof_sel = mapping_opciones[sel_etiqueta]
-            dupla_actual_id = [k for k, v in duplas_nombres.items() if v == prof_sel][0]
+            dupla_sel_id = mapping_opciones[sel_etiqueta]
+            prof_sel = duplas_nombres.get(dupla_sel_id, "")
         else:
-            prof_sel = st.session_state.user_name
-            dupla_actual_id = [k for k, v in duplas_nombres.items() if v.lower() == prof_sel.lower()]
-            dupla_actual_id = dupla_actual_id[0] if dupla_actual_id else "Mi Dupla"
-            st.info(f"Visualizando casos de: **{dupla_actual_id} ({prof_sel})**")
+            dupla_sel_id = obtener_dupla_id_para_caso(st.session_state.user_name)
+            prof_sel = duplas_nombres.get(dupla_sel_id, st.session_state.user_name)
+            st.info(f"Visualizando casos de: **{dupla_sel_id} ({prof_sel})**")
             
-        df_c_filtrado = df_c[df_c['Profesional'].str.strip().str.lower() == prof_sel.strip().lower()]
+        # Filtramos usando el ID de la dupla para garantizar que aparezcan los casos sin importar el nombre escrito en la BD
+        df_c_filtrado = df_c[df_c['Dupla_ID_Asignada'] == dupla_sel_id]
 
         if not df_c_filtrado.empty:
             col_graf1, col_graf2 = st.columns([5, 1])
@@ -749,7 +758,7 @@ if not df_c.empty:
                     st.markdown('</div>', unsafe_allow_html=True)
 
             if st.session_state.ver_pendientes_ind and no_cumple_count > 0:
-                st.warning(f"⚠️ Casos Fuera de Plazo: {dupla_actual_id} ({prof_sel})")
+                st.warning(f"⚠️ Casos Fuera de Plazo: {dupla_sel_id} ({prof_sel})")
                 df_pend_ind = pd.DataFrame(detalles_pendientes_ind)
                 df_pend_ind = df_pend_ind.sort_values(by="Venc. (3m)", ascending=True).reset_index(drop=True)
                 df_pend_ind['Venc. (3m)'] = pd.to_datetime(df_pend_ind['Venc. (3m)']).dt.strftime('%d-%m-%Y')
@@ -861,8 +870,8 @@ if not df_c.empty:
                 st.subheader("📋 Próximas Entregas (Ordenadas por Venc. 3m)")
                 st.dataframe(df_maestro_vista[["Caso", "Próximo Informe", "F. Límite (Teo)", "Venc. (3m)", "Estado (Operativo)"]], use_container_width=True, hide_index=True)
                 try:
-                    pdf_ejecutivo = generar_pdf_visual(f"{dupla_actual_id} ({prof_sel})", df_maestro_vista, cumple_count, no_cumple_count)
-                    st.download_button("📥 Descargar Reporte Ejecutivo (PDF)", pdf_ejecutivo, f"Reporte_{dupla_actual_id}.pdf")
+                    pdf_ejecutivo = generar_pdf_visual(f"{dupla_sel_id} ({prof_sel})", df_maestro_vista, cumple_count, no_cumple_count)
+                    st.download_button("📥 Descargar Reporte Ejecutivo (PDF)", pdf_ejecutivo, f"Reporte_{dupla_sel_id}.pdf")
                 except Exception as e:
                     st.info(f"Reporte PDF no disponible: {e}")
         else:
@@ -877,16 +886,12 @@ if not df_c.empty:
             resumen_global_maestro = []
             detalles_pendientes_global = []
 
-            for p in sorted(df_c['Profesional'].unique()):
-                df_p = df_c[df_c['Profesional'] == p]
+            for d_id in [f"Dupla {i}" for i in range(1, 8)]:
+                integrantes_d = duplas_nombres.get(d_id, "")
+                df_p = df_c[df_c['Dupla_ID_Asignada'] == d_id]
                 p_cumple, p_atraso = 0, 0
                 
-                # Encontrar la dupla a la que pertenece este profesional en la config
-                dupla_etiqueta_g = p
-                for d_id, d_int in duplas_nombres.items():
-                    if p.strip().lower() == d_int.strip().lower():
-                        dupla_etiqueta_g = f"{d_id}\n({d_int})"
-                        break
+                dupla_etiqueta_g = f"{d_id}\n({integrantes_d})"
 
                 for c in df_p['Caso'].unique():
                     envios_c = df_e[df_e['Caso'] == c]
@@ -921,7 +926,7 @@ if not df_c.empty:
 
                     resumen_global_maestro.append({
                         "Caso": c, "RIT": df_c[df_c['Caso'] == c].iloc[0]['RIT'],
-                        "Profesional": p, "Dupla_Label": dupla_etiqueta_g.replace("\n", " "), 
+                        "Profesional": integrantes_d, "Dupla_Label": dupla_etiqueta_g.replace("\n", " "), 
                         "Meses": m_ant, "Edad": edad,
                         "codnino": df_c[df_c['Caso'] == c].iloc[0].get('codnino', 'S/I')
                     })
@@ -989,14 +994,15 @@ if not df_c.empty:
             st.subheader("📋 Lista Maestra")
             df_c_tabla = df_c.copy()
             
-            def traducir_prof_tabla(p_val):
-                for d_id, d_int in duplas_nombres.items():
-                    if p_val.strip().lower() == d_int.strip().lower():
-                        return f"{d_id} ({d_int})"
-                return p_val
+            def traducir_prof_tabla(row_val):
+                d_id = obtener_dupla_id_para_caso(row_val)
+                integrantes = duplas_nombres.get(d_id, row_val)
+                return f"{d_id} ({integrantes})"
 
             df_c_tabla['Profesional'] = df_c_tabla['Profesional'].apply(traducir_prof_tabla)
-            st.dataframe(df_c_tabla, use_container_width=True, hide_index=True)
+            # Ocultamos la columna auxiliar del dataframe visual final
+            df_c_tabla_mostrar = df_c_tabla.drop(columns=['Dupla_ID_Asignada'], errors='ignore')
+            st.dataframe(df_c_tabla_mostrar, use_container_width=True, hide_index=True)
             
             col_dl1, col_dl2 = st.columns(2)
             with col_dl1:
@@ -1015,15 +1021,10 @@ if not df_c.empty:
             st.subheader("👥 Casos Activos por Dupla")
             st.caption("Referencia para decidir a quién asignar el próximo ingreso.")
             
-            conteo_casos_dupla = df_c.groupby('Profesional').size().reset_index(name='Casos Activos')
-            
-            # Formatear para mostrar ordenado por Dupla 1 a 7
             data_conteo_limpio = []
             for d_id in [f"Dupla {i}" for i in range(1, 8)]:
                 integrantes_dupla = duplas_nombres.get(d_id, "")
-                # Buscar cuántos casos tiene este integrante en la BD
-                match_fila = conteo_casos_dupla[conteo_casos_dupla['Profesional'].str.strip().str.lower() == integrantes_dupla.strip().lower()]
-                cant = int(match_fila['Casos Activos'].values[0]) if not match_fila.empty else 0
+                cant = len(df_c[df_c['Dupla_ID_Asignada'] == d_id])
                 data_conteo_limpio.append({
                     "Dupla_Label": f"{d_id}\n({integrantes_dupla})",
                     "Casos Activos": cant
@@ -1141,7 +1142,8 @@ if not df_c.empty:
                         
                         opciones_duplas_le = [f"{d}: {duplas_nombres.get(d, '')}" for d in [f"Dupla {i}" for i in range(1, 8)]]
                         prof_elegido_le = st.selectbox("Asignar Dupla", opciones_duplas_le, key="prof_le_a_caso")
-                        prof_nuevo = prof_elegido_le.split(": ")[1]
+                        dupla_id_le = prof_elegido_le.split(":")[0].strip()
+                        prof_nuevo = duplas_nombres.get(dupla_id_le, prof_elegido_le.split(": ")[1])
 
                         f_ing_nuevo = st.date_input("Fecha Ingreso", datetime.now(), key="fing_le_a_caso")
 
