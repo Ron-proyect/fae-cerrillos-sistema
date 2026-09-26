@@ -42,24 +42,18 @@ SIS_HTML_FILE = "analitica_sis.html"
 
 CREDENTIALS = {
     "admin": {"pass": "cerrillos2026", "role": "admin", "name": "Administrador"},
-    "bruno.diaz": {"pass": "fae.cerrillos", "role": "user", "name": "Bruno Diaz-Casandra Mora"},
-    "daniela.paula": {"pass": "fae.cerrillos", "role": "user", "name": "Daniela Izquierdo-Paula Leyton"},
-    "francisca.tiare": {"pass": "fae.cerrillos", "role": "user", "name": "Francisca Salazar-Tiare Riquelme"},
-    "laura.alan": {"pass": "fae.cerrillos", "role": "user", "name": "Laura Arancibia-Alan Zamora"},
-    "maida.valeria": {"pass": "fae.cerrillos", "role": "user", "name": "Maida Muñoz-Valeria Orellana"},
-    "marcelo.maria": {"pass": "fae.cerrillos", "role": "user", "name": "Marcelo Huento-María Constanza Correa"},
-    "solange.francisco": {"pass": "fae.cerrillos", "role": "user", "name": "Solange Alegría-Francisco Carvajal"}
+    "bruno.diaz": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 1"},
+    "daniela.paula": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 2"},
+    "francisca.tiare": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 3"},
+    "laura.alan": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 4"},
+    "maida.valeria": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 5"},
+    "marcelo.maria": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 6"},
+    "solange.francisco": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 7"}
 }
 
-PROF_BASE = sorted([
-    "Bruno Diaz-Casandra Mora", 
-    "Daniela Izquierdo-Paula Leyton", 
-    "Francisca Salazar-Tiare Riquelme", 
-    "Laura Arancibia-Alan Zamora", 
-    "Maida Muñoz-Valeria Orellana", 
-    "Marcelo Huento-María Constanza Correa", 
-    "Solange Alegría-Francisco Carvajal"
-])
+DUPLAS_BASE = [
+    "Dupla 1", "Dupla 2", "Dupla 3", "Dupla 4", "Dupla 5", "Dupla 6", "Dupla 7"
+]
 
 NOMBRES_TABLA = [
     "Evaluación", "Avances 1", "Avances 2", "Avances 3", "Avances 4", 
@@ -165,6 +159,34 @@ def login_screen():
 if not st.session_state.logged_in:
     login_screen()
     st.stop()
+
+def cargar_duplas_config():
+    try:
+        response = supabase.table("config_duplas").select("*").execute()
+        df = pd.DataFrame(response.data)
+        if df.empty:
+            # Diccionario por defecto si no existe la tabla
+            return {
+                "Dupla 1": "Bruno Diaz-Casandra Mora",
+                "Dupla 2": "Daniela Izquierdo-Paula Leyton",
+                "Dupla 3": "Francisca Salazar-Tiare Riquelme",
+                "Dupla 4": "Laura Arancibia-Alan Zamora",
+                "Dupla 5": "Maida Muñoz-Valeria Orellana",
+                "Dupla 6": "Marcelo Huento-María Constanza Correa",
+                "Dupla 7": "Solange Alegría-Francisco Carvajal"
+            }
+        return dict(zip(df['dupla'], df['integrantes']))
+    except:
+        return {d: d for d in DUPLAS_BASE}
+
+def guardar_duplas_config(mapping_dict):
+    try:
+        for dupla, integrantes in mapping_dict.items():
+            supabase.table("config_duplas").upsert({"dupla": dupla, "integrantes": integrantes}, on_conflict="dupla").execute()
+    except Exception as e:
+        st.sidebar.error(f"Error al guardar duplas: {e}")
+
+duplas_nombres = cargar_duplas_config()
 
 def limpiar_y_asegurar_unicos(columnas):
     nombres_limpios = []
@@ -360,6 +382,19 @@ def generar_pdf_cronograma(caso_nombre, f_ingreso, df_hitos):
         pdf.ln()
     return bytes(pdf.output())
 
+# --- CONFIGURACIÓN DE DUPLAS EN BARRA LATERAL (ADMIN) ---
+if st.session_state.user_role == "admin":
+    with st.sidebar.expander("⚙️ Gestionar Integrantes de Duplas"):
+        nuevo_mapping = {}
+        with st.form("form_config_duplas"):
+            for d in DUPLAS_BASE:
+                actual = duplas_nombres.get(d, d)
+                nuevo_mapping[d] = st.text_input(f"Integrantes {d}", value=actual)
+            if st.form_submit_button("Guardar Duplas"):
+                guardar_duplas_config(nuevo_mapping)
+                st.success("¡Duplas actualizadas!")
+                st.rerun()
+
 if st.session_state.user_role == "admin":
     st.sidebar.header("1. Registrar Nuevo Caso")
     with st.sidebar.form("nuevo_caso", clear_on_submit=True):
@@ -367,7 +402,7 @@ if st.session_state.user_role == "admin":
         n_rit = st.text_input("Causa RIT")
         n_codnino = st.text_input("Cod. Niño")
         n_fecnac = st.date_input("Fecha de Nacimiento", datetime.now(), min_value=datetime(1990, 1, 1))
-        prof = st.selectbox("Profesional", PROF_BASE)
+        prof = st.selectbox("Dupla Asignada", DUPLAS_BASE, format_func=lambda x: f"{x} ({duplas_nombres.get(x, x)})")
         f_ing = st.date_input("Fecha Ingreso", datetime.now())
         if st.form_submit_button("Guardar Caso") and n_caso:
             try:
@@ -423,10 +458,17 @@ if st.session_state.user_role == "admin":
                         f_ing_dt = pd.to_datetime(row[c_fecha], errors='coerce', dayfirst=True)
                         f_ing_val = f_ing_dt.strftime('%Y-%m-%d') if pd.notnull(f_ing_dt) else None
                         
+                        val_prof = str(row[c_prof]).strip()
+                        # Normalizar si viene con nombre antiguo a Dupla X
+                        for dx, nombres_dx in duplas_nombres.items():
+                            if val_prof.lower() in nombres_dx.lower() or val_prof.lower() == dx.lower():
+                                val_prof = dx
+                                break
+
                         if f_ing_val:
                             meta_vals = {
                                 "Caso": nombre_c, "RIT": str(row[c_rit]).strip() if c_rit else "S/R",
-                                "Profesional": str(row[c_prof]).strip(), "Fecha Ingreso": f_ing_val,
+                                "Profesional": val_prof, "Fecha Ingreso": f_ing_val,
                                 "codnino": str(row[c_codnino]).strip() if c_codnino else "S/I",
                                 "fechanacimiento": str(row[c_nacimiento]).strip() if c_nacimiento else "S/I",
                                 "Nacionalidad": str(row[c_nacionalidad]).strip() if c_nacionalidad else "S/I",
@@ -498,7 +540,11 @@ if st.session_state.user_role == "admin":
                 with st.form("form_unificado_editar"):
                     nuevo_nombre_c = st.text_input("Nombre del Caso", caso_a_editar)
                     nuevo_rit = st.text_input("Causa RIT", datos_actuales['RIT'])
-                    nuevo_prof = st.selectbox("Profesional", PROF_BASE, index=PROF_BASE.index(datos_actuales['Profesional']) if datos_actuales['Profesional'] in PROF_BASE else 0)
+                    
+                    prof_actual_val = datos_actuales['Profesional']
+                    idx_prof_edit = DUPLAS_BASE.index(prof_actual_val) if prof_actual_val in DUPLAS_BASE else 0
+                    nuevo_prof = st.selectbox("Dupla Asignada", DUPLAS_BASE, index=idx_prof_edit, format_func=lambda x: f"{x} ({duplas_nombres.get(x, x)})")
+                    
                     nueva_fecha_ing = st.date_input("Fecha Ingreso", datos_actuales['Fecha Ingreso'])
                     
                     if st.form_submit_button("Guardar Cambios"):
@@ -580,28 +626,30 @@ if not df_c.empty:
     st.divider()
 
     if st.session_state.user_role == "admin":
-        tab_ind, tab_global, tab_espera, tab_sis, tab_word = st.tabs(["👤 Vista por Profesional", "🌎 Panel Global", "⏳ Lista de Espera", "📊 Analítica SIS", "📝 Automatizador Word"])
+        tab_ind, tab_global, tab_espera, tab_sis, tab_word = st.tabs(["👤 Vista por Duplas", "🌎 Panel Global", "⏳ Lista de Espera", "📊 Analítica SIS", "📝 Automatizador Word"])
     else:
-        tab_ind, tab_word = st.tabs(["👤 Mi Vista Profesional", "📝 Automatizador Word"])
+        tab_ind, tab_word = st.tabs(["👤 Mi Vista Dupla", "📝 Automatizador Word"])
 
     with tab_ind:
-        st.subheader("🔍 Consulta por Profesional")
+        st.subheader("🔍 Consulta por Dupla")
         if st.session_state.user_role == "admin":
-            lista_profs_f = sorted(df_c['Profesional'].unique())
+            lista_profs_f = [d for d in DUPLAS_BASE if not df_c[df_c['Profesional'] == d].empty]
+            if not lista_profs_f:
+                lista_profs_f = DUPLAS_BASE
             if st.session_state.prof_seleccionado_ind not in lista_profs_f:
                 st.session_state.prof_seleccionado_ind = lista_profs_f[0]
             
-            # --- NUEVA LÓGICA PARA MANTENER ESTADO ---
             idx_prof = lista_profs_f.index(st.session_state.prof_seleccionado_ind)
             prof_sel = st.selectbox(
-                "Selecciona Profesional:", 
+                "Selecciona Dupla:", 
                 lista_profs_f, 
-                index=idx_prof
+                index=idx_prof,
+                format_func=lambda x: f"{x} ({duplas_nombres.get(x, x)})"
             )
             st.session_state.prof_seleccionado_ind = prof_sel
         else:
             prof_sel = st.session_state.user_name
-            st.info(f"Visualizando casos de: **{prof_sel}**")
+            st.info(f"Visualizando casos de: **{prof_sel} ({duplas_nombres.get(prof_sel, '')})**")
             
         df_c_filtrado = df_c[df_c['Profesional'] == prof_sel]
 
@@ -728,7 +776,7 @@ if not df_c.empty:
                     st.markdown('</div>', unsafe_allow_html=True)
 
             if st.session_state.ver_pendientes_ind and no_cumple_count > 0:
-                st.warning(f"⚠️ Casos Fuera de Plazo: {prof_sel}")
+                st.warning(f"⚠️ Casos Fuera de Plazo: {prof_sel} ({duplas_nombres.get(prof_sel, '')})")
                 df_pend_ind = pd.DataFrame(detalles_pendientes_ind)
                 df_pend_ind = df_pend_ind.sort_values(by="Venc. (3m)", ascending=True).reset_index(drop=True)
                 df_pend_ind['Venc. (3m)'] = pd.to_datetime(df_pend_ind['Venc. (3m)']).dt.strftime('%d-%m-%Y')
@@ -845,7 +893,7 @@ if not df_c.empty:
                 st.subheader("📋 Próximas Entregas (Ordenadas por Venc. 3m)")
                 st.dataframe(df_maestro_vista[["Caso", "Próximo Informe", "F. Límite (Teo)", "Venc. (3m)", "Estado (Operativo)"]], use_container_width=True, hide_index=True)
                 try:
-                    pdf_ejecutivo = generar_pdf_visual(prof_sel, df_maestro_vista, cumple_count, no_cumple_count)
+                    pdf_ejecutivo = generar_pdf_visual(f"{prof_sel} ({duplas_nombres.get(prof_sel, '')})", df_maestro_vista, cumple_count, no_cumple_count)
                     st.download_button("📥 Descargar Reporte Ejecutivo (PDF)", pdf_ejecutivo, f"Reporte_{prof_sel}.pdf")
                 except Exception as e:
                     st.info(f"Reporte PDF no disponible: {e}")
@@ -881,7 +929,7 @@ if not df_c.empty:
                         detalles_pendientes_global.append({
                             "Caso": c,
                             "RIT": df_c[df_c['Caso'] == c].iloc[0]['RIT'],
-                            "Profesional": p,
+                            "Dupla": f"{p} ({duplas_nombres.get(p, '')})",
                             "Próximo Informe": proximo_inf_g,
                             "Venc. (3m)": venc_op_g,
                             "Meses": m_ant
@@ -895,13 +943,15 @@ if not df_c.empty:
 
                     resumen_global_maestro.append({
                         "Caso": c, "RIT": df_c[df_c['Caso'] == c].iloc[0]['RIT'],
-                        "Profesional": p, "Meses": m_ant, "Edad": edad,
+                        "Profesional": p, "Dupla_Label": f"{p} ({duplas_nombres.get(p, '')})", 
+                        "Meses": m_ant, "Edad": edad,
                         "codnino": df_c[df_c['Caso'] == c].iloc[0].get('codnino', 'S/I')
                     })
 
                 global_cumple += p_cumple
                 global_atraso += p_atraso
-                data_profesionales.append({"Profesional": p, "Al día": p_cumple, "Fuera de plazo": p_atraso})
+                label_p_graf = f"{p}\n({duplas_nombres.get(p, '')})"
+                data_profesionales.append({"Profesional": label_p_graf, "Al día": p_cumple, "Fuera de plazo": p_atraso})
 
             c1, c2, c3 = st.columns(3)
             c1.metric("Total Casos", global_cumple + global_atraso)
@@ -927,7 +977,7 @@ if not df_c.empty:
                 fig_comp = px.bar(pd.DataFrame(data_profesionales), x="Profesional", y=["Al día", "Fuera de plazo"], 
                                   color_discrete_map={"Al día": COLOR_VERDE_IRIDEM, "Fuera de plazo": COLOR_GRIS_IRIDEM}, 
                                   barmode="group", text_auto=True)
-                fig_comp.update_layout(xaxis_tickangle=-45, height=400, paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO)
+                fig_comp.update_layout(xaxis_tickangle=-25, height=420, paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO)
                 y_total_fijo = max([max(fp["Al día"], fp["Fuera de plazo"]) for fp in data_profesionales], default=0) + 3
                 y_total_fijo = max(y_total_fijo, 22)
                 for fila_prof in data_profesionales:
@@ -955,19 +1005,22 @@ if not df_c.empty:
                 edad_txt = f"{info_c['Edad']} años" if info_c['Edad'] != "S/I" else "S/I"
                 st.markdown(f"""
                     <div class="case-info-banner">
-                        <b>🆔 Cod. Niño:</b> {info_c['codnino']} | <b>👤 Caso:</b> {info_c['Caso']} | <b>🎂 Edad:</b> {edad_txt} | <b>📄 RIT:</b> {info_c['RIT']} | <b>🤝 Profesional:</b> {info_c['Profesional']} | <b>⏱️ Antigüedad:</b> {info_c['Meses']} meses
+                        <b>🆔 Cod. Niño:</b> {info_c['codnino']} | <b>👤 Caso:</b> {info_c['Caso']} | <b>🎂 Edad:</b> {edad_txt} | <b>📄 RIT:</b> {info_c['RIT']} | <b>🤝 Dupla:</b> {info_c['Dupla_Label']} | <b>⏱️ Antigüedad:</b> {info_c['Meses']} meses
                     </div>
                 """, unsafe_allow_html=True)
 
             st.divider()
             st.subheader("📋 Lista Maestra")
-            st.dataframe(df_c, use_container_width=True, hide_index=True)
+            df_c_tabla = df_c.copy()
+            df_c_tabla['Profesional'] = df_c_tabla['Profesional'].apply(lambda x: f"{x} ({duplas_nombres.get(x, '')})")
+            st.dataframe(df_c_tabla, use_container_width=True, hide_index=True)
             col_dl1, col_dl2 = st.columns(2)
             with col_dl1:
                 st.download_button("📥 Descargar Matriz Completa (Excel)", convertir_a_excel_completo(df_c, df_e), "Matriz_Completa_FAE.xlsx")
             with col_dl2:
-                df_lista_simple = df_c[["Caso", "Profesional"]].copy().sort_values("Caso").reset_index(drop=True)
+                df_lista_simple = df_c_tabla[["Caso", "Profesional"]].copy().sort_values("Caso").reset_index(drop=True)
                 df_lista_simple.insert(0, "N°", range(1, len(df_lista_simple) + 1))
+                df_lista_simple = df_lista_simple.rename(columns={"Profesional": "Dupla"})
                 output_simple = io.BytesIO()
                 with pd.ExcelWriter(output_simple, engine='openpyxl') as writer:
                     df_lista_simple.to_excel(writer, index=False, sheet_name='Lista_Simple')
@@ -976,9 +1029,17 @@ if not df_c.empty:
         with tab_espera:
             st.subheader("👥 Casos Activos por Dupla")
             st.caption("Referencia para decidir a quién asignar el próximo ingreso.")
-            conteo_casos_dupla = df_c.groupby('Profesional').size().reset_index(name='Casos Activos').sort_values('Profesional')
+            
+            conteo_casos_dupla = df_c.groupby('Profesional').size().reset_index(name='Casos Activos')
+            # Asegurar que aparezcan todas las duplas del 1 al 7 aunque tengan 0 casos
+            df_todas_duplas = pd.DataFrame({'Profesional': DUPLAS_BASE})
+            conteo_casos_dupla = df_todas_duplas.merge(conteo_casos_dupla, on='Profesional', how='left').fillna(0)
+            conteo_casos_dupla['Casos Activos'] = conteo_casos_dupla['Casos Activos'].astype(int)
+            conteo_casos_dupla['Dupla_Label'] = conteo_casos_dupla['Profesional'].apply(lambda x: f"{x}\n({duplas_nombres.get(x, '')})")
+            conteo_casos_dupla = conteo_casos_dupla.sort_values('Profesional')
+
             fig_conteo_dupla = px.bar(
-                conteo_casos_dupla, x='Profesional', y='Casos Activos',
+                conteo_casos_dupla, x='Dupla_Label', y='Casos Activos',
                 text='Casos Activos',
                 color_discrete_sequence=[COLOR_VERDE_IRIDEM]
             )
@@ -991,14 +1052,14 @@ if not df_c.empty:
                 width=0.4
             )
             fig_conteo_dupla.update_layout(
-                xaxis_tickangle=-45, 
-                height=350, 
+                xaxis_tickangle=-25, 
+                height=380, 
                 paper_bgcolor=COLOR_GRIS_FONDO, 
                 plot_bgcolor=COLOR_GRIS_FONDO,
                 yaxis_title="N° de Casos", 
                 xaxis_title="",
                 yaxis=dict(range=[0, max_casos * 1.25]),
-                margin=dict(t=50, b=120)
+                margin=dict(t=50, b=100)
             )
             
             col_graf_espera, col_vacia_espera = st.columns([1, 1])
@@ -1111,7 +1172,7 @@ if not df_c.empty:
                         rit_nuevo = st.text_input("Causa RIT", rit_sugerido)
                         codnino_nuevo = st.text_input("Cod. Niño")
                         fecnac_nuevo = st.date_input("Fecha de Nacimiento", fecnac_sugerida, min_value=datetime(1990, 1, 1))
-                        prof_nuevo = st.selectbox("Profesional", PROF_BASE, key="prof_le_a_caso")
+                        prof_nuevo = st.selectbox("Dupla Asignada", DUPLAS_BASE, key="prof_le_a_caso", format_func=lambda x: f"{x} ({duplas_nombres.get(x, x)})")
                         f_ing_nuevo = st.date_input("Fecha Ingreso", datetime.now(), key="fing_le_a_caso")
 
                         if st.form_submit_button("✅ Registrar como Caso y eliminar de Lista de Espera") and caso_nombre_nuevo:
