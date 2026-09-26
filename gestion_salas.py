@@ -695,25 +695,25 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
                 st.download_button(label="📅 Descargar para Google Calendar", data=ics_data, file_name=f"calendario_{mes_sel}.ics", mime="text/calendar", key="salas_dl_ics")
 
     # ------------------------------------------------------------------
-    # PROFESIONAL (no admin): solo el mes actual, el calendario, y la
-    # descarga del Excel visual. Nada de panel de control, importación,
-    # bloqueos, editores ni descargas de plantilla / iCal.
+    # PROFESIONAL (no admin): puede elegir el mes a ver (por defecto el
+    # actual), el calendario y la descarga del Excel visual. Nada de panel
+    # de control, importación, bloqueos, editores ni descargas de
+    # plantilla / iCal.
     # ------------------------------------------------------------------
     else:
         hoy = datetime.now()
         mes_actual_id = f"{hoy.year}-{hoy.month:02d}"
-        claves_disponibles = list(st.session_state.meses_data.keys())
-        if mes_actual_id in st.session_state.meses_data:
-            mes_sel = mes_actual_id
-        elif claves_disponibles:
-            objetivo = hoy.year * 12 + hoy.month
-            mes_sel = min(claves_disponibles, key=lambda k: abs(_mes_a_num(k) - objetivo))
-        else:
-            mes_sel = None
-        if mes_sel is None:
-            st.info("Todavía no hay una planificación cargada para este mes.")
+        claves_disponibles = sorted(st.session_state.meses_data.keys(), key=_mes_a_num)
+        if not claves_disponibles:
+            st.info("Todavía no hay una planificación cargada.")
             return
-        st.markdown(f"**📅 Mes: {mes_sel}**")
+        if mes_actual_id in claves_disponibles:
+            mes_default = mes_actual_id
+        else:
+            objetivo = hoy.year * 12 + hoy.month
+            mes_default = min(claves_disponibles, key=lambda k: abs(_mes_a_num(k) - objetivo))
+        idx_default = claves_disponibles.index(mes_default)
+        mes_sel = st.selectbox("📅 Seleccionar Mes:", options=claves_disponibles, index=idx_default, key="salas_mes_sel_user")
 
         m_data = st.session_state.meses_data[mes_sel]
         foco_duplas = [dupla_usuario] if dupla_usuario in DUPLAS else []
