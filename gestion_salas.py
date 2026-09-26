@@ -537,12 +537,27 @@ def exportar_icalendar(df_total, año, mes):
     return cal.to_ical()
 
 # --- 8. INTERFAZ (para insertar dentro de una pestaña de app.py) ---
-def render_gestion_salas(supabase, es_admin=True):
-    """Renderiza el módulo completo de gestión de salas dentro del contenedor actual
-    (pensado para llamarse dentro de un 'with tab:'). Los controles de edición solo
-    se muestran si es_admin=True; la vista del calendario está disponible para todos.
+def _mes_a_num(mes_id):
+    """Convierte un id de mes 'YYYY-MM' a un entero comparable (año*12 + mes)."""
+    a, m = mes_id.split("-")
+    return int(a) * 12 + int(m)
 
-    'supabase' es el cliente ya conectado (el mismo que crea app.py con create_client)."""
+def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
+    """Renderiza el módulo completo de gestión de salas dentro del contenedor actual
+    (pensado para llamarse dentro de un 'with tab:').
+
+    - es_admin=True: ve el panel de control completo (todos los meses, bloqueos,
+      editores manuales, importación, descarga de plantilla, descarga a Google
+      Calendar, etc.).
+    - es_admin=False: es la sesión de un profesional. Solo ve el calendario del mes
+      actual y puede descargar el Excel visual; el resto de opciones queda
+      reservado al administrador. Si se le pasa 'dupla_usuario' (el id de SU dupla,
+      ej. 'D3'), sus propios bloques quedan destacados automáticamente en el
+      calendario (igual que el Modo Enfoque del admin, pero fijo y sin selector).
+
+    'supabase' es el cliente ya conectado (el mismo que crea app.py con create_client).
+    'dupla_usuario' debe venir del sistema de login de app.py (qué dupla es el
+    profesional que inició sesión); si no se pasa, simplemente no se destaca nada."""
 
     if 'meses_data' not in st.session_state:
         datos_previos = cargar_datos(supabase)
@@ -571,29 +586,34 @@ def render_gestion_salas(supabase, es_admin=True):
         .legend-text { font-size: 12px; margin-bottom: 4px; padding: 2px 5px; border-radius: 3px; }
     </style>""", unsafe_allow_html=True)
 
-    with st.expander("⚙️ Panel de Control - Gestión de Salas", expanded=False):
-        if es_admin and st.button("⚠️ Limpiar y Resetear Todo", key="salas_reset_todo"):
-            if borrar_todo_supabase(supabase):
-                del st.session_state['meses_data']
+    # ------------------------------------------------------------------
+    # ADMINISTRADOR: panel de control completo (todo lo que no sea la
+    # sola vista del calendario y la descarga del Excel visual queda acá).
+    # ------------------------------------------------------------------
+    if es_admin:
+        with st.expander("⚙️ Panel de Control - Gestión de Salas", expanded=False):
+            if st.button("⚠️ Limpiar y Resetear Todo", key="salas_reset_todo"):
+                if borrar_todo_supabase(supabase):
+                    del st.session_state['meses_data']
+                    st.rerun()
+
+            st.subheader("👥 Duplas Profesionales")
+            for id_dupla, nombre in NOMBRES_DUPLAS.items():
+                dias_tt = [dia for dia, lista in TELETRABAJO.items() if id_dupla in lista]
+                tt_str = f" (TT: {', '.join(dias_tt)})" if dias_tt else ""
+                st.markdown(f"<div class='legend-text' style='color: {COLORES_DUPLAS[id_dupla]}; border-left: 4px solid {COLORES_DUPLAS[id_dupla]};'><b>{id_dupla}:</b> {nombre}{tt_str}</div>", unsafe_allow_html=True)
+
+            st.markdown("---")
+            mes_sel = st.selectbox("📅 Seleccionar Mes:", options=list(st.session_state.meses_data.keys()), key="salas_mes_sel")
+            m_data = st.session_state.meses_data[mes_sel]
+
+            fijado_check = st.checkbox("🔒 Fijar Mes (Bloquear cambios)", value=m_data['fijado'], key="salas_fijado")
+            if fijado_check != m_data['fijado']:
+                st.session_state.meses_data[mes_sel]['fijado'] = fijado_check
+                guardar_datos(supabase)
                 st.rerun()
+            foco_duplas = st.multiselect("🔎 Modo Enfoque:", options=DUPLAS, default=[], format_func=formatear_opcion_dupla, key="salas_foco")
 
-        st.subheader("👥 Duplas Profesionales")
-        for id_dupla, nombre in NOMBRES_DUPLAS.items():
-            dias_tt = [dia for dia, lista in TELETRABAJO.items() if id_dupla in lista]
-            tt_str = f" (TT: {', '.join(dias_tt)})" if dias_tt else ""
-            st.markdown(f"<div class='legend-text' style='color: {COLORES_DUPLAS[id_dupla]}; border-left: 4px solid {COLORES_DUPLAS[id_dupla]};'><b>{id_dupla}:</b> {nombre}{tt_str}</div>", unsafe_allow_html=True)
-
-        st.markdown("---")
-        mes_sel = st.selectbox("📅 Seleccionar Mes:", options=list(st.session_state.meses_data.keys()), key="salas_mes_sel")
-        m_data = st.session_state.meses_data[mes_sel]
-        fijado_check = st.checkbox("🔒 Fijar Mes (Bloquear cambios)", value=m_data['fijado'], key="salas_fijado")
-        if fijado_check != m_data['fijado']:
-            st.session_state.meses_data[mes_sel]['fijado'] = fijado_check
-            guardar_datos(supabase)
-            st.rerun()
-        foco_duplas = st.multiselect("🔎 Modo Enfoque:", options=DUPLAS, default=[], format_func=formatear_opcion_dupla, key="salas_foco")
-
-        if es_admin:
             st.markdown("---")
             st.subheader("📂 Importar Planificación")
             uploaded_file = st.file_uploader("Subir Excel/CSV para este mes:", type=["xlsx", "csv"], key="salas_upload")
@@ -658,18 +678,47 @@ def render_gestion_salas(supabase, es_admin=True):
                     guardar_datos(supabase)
                     st.rerun()
 
-        st.markdown("---")
+            st.markdown("---")
+            excel_data = exportar_excel_visual(m_data['df'], m_data['bloqueos'])
+            st.download_button(label="📥 Descargar Excel Visual", data=excel_data, file_name=f"calendario_visual_{mes_sel}.xlsx", key="salas_dl_excel")
+
+            template_buffer = BytesIO()
+            with pd.ExcelWriter(template_buffer, engine='xlsxwriter') as writer:
+                m_data['df'].to_excel(writer, index=False, sheet_name='Plantilla')
+            st.download_button(label="📥 Descargar Plantilla para Importar (Excel)", data=template_buffer.getvalue(), file_name=f"plantilla_importar_{mes_sel}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="salas_dl_plantilla")
+
+            if ICAL_DISPONIBLE:
+                ics_data = exportar_icalendar(m_data['df'], m_data['año'], m_data['mes'])
+                st.download_button(label="📅 Descargar para Google Calendar", data=ics_data, file_name=f"calendario_{mes_sel}.ics", mime="text/calendar", key="salas_dl_ics")
+
+    # ------------------------------------------------------------------
+    # PROFESIONAL (no admin): solo el mes actual, el calendario, y la
+    # descarga del Excel visual. Nada de panel de control, importación,
+    # bloqueos, editores ni descargas de plantilla / iCal.
+    # ------------------------------------------------------------------
+    else:
+        hoy = datetime.now()
+        mes_actual_id = f"{hoy.year}-{hoy.month:02d}"
+        claves_disponibles = list(st.session_state.meses_data.keys())
+        if mes_actual_id in st.session_state.meses_data:
+            mes_sel = mes_actual_id
+        elif claves_disponibles:
+            objetivo = hoy.year * 12 + hoy.month
+            mes_sel = min(claves_disponibles, key=lambda k: abs(_mes_a_num(k) - objetivo))
+        else:
+            mes_sel = None
+        if mes_sel is None:
+            st.info("Todavía no hay una planificación cargada para este mes.")
+            return
+        st.markdown(f"**📅 Mes: {mes_sel}**")
+
+        m_data = st.session_state.meses_data[mes_sel]
+        foco_duplas = [dupla_usuario] if dupla_usuario in DUPLAS else []
+        if dupla_usuario in DUPLAS:
+            st.caption(f"🔎 Tus bloques ({formatear_opcion_dupla(dupla_usuario)}) están destacados abajo.")
+
         excel_data = exportar_excel_visual(m_data['df'], m_data['bloqueos'])
         st.download_button(label="📥 Descargar Excel Visual", data=excel_data, file_name=f"calendario_visual_{mes_sel}.xlsx", key="salas_dl_excel")
-
-        template_buffer = BytesIO()
-        with pd.ExcelWriter(template_buffer, engine='xlsxwriter') as writer:
-            m_data['df'].to_excel(writer, index=False, sheet_name='Plantilla')
-        st.download_button(label="📥 Descargar Plantilla para Importar (Excel)", data=template_buffer.getvalue(), file_name=f"plantilla_importar_{mes_sel}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="salas_dl_plantilla")
-
-        if ICAL_DISPONIBLE:
-            ics_data = exportar_icalendar(m_data['df'], m_data['año'], m_data['mes'])
-            st.download_button(label="📅 Descargar para Google Calendar", data=ics_data, file_name=f"calendario_{mes_sel}.ics", mime="text/calendar", key="salas_dl_ics")
 
     # --- Vista del calendario (disponible para todos) ---
     st.markdown(render_resumen_mensual(m_data['df'], foco_duplas), unsafe_allow_html=True)
