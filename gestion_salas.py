@@ -46,15 +46,6 @@ BLOQUES_TARDE = BLOQUES[4:]    # B5 a B7 (14:00 a 17:00)
 # Da continuidad (no quedan "salteados") sin dejar que una sola dupla acapare el día completo.
 MAX_DOBLES_CONSECUTIVOS_DIA = 2
 
-# Tope de horas (bloques de 1 hora, cuenten o no como "doble") que una MISMA dupla
-# puede acumular en salas durante UN SOLO día. Antes no existía y podían quedar
-# duplas con el día completo (hasta 7 bloques) asignado a ellas solas.
-MAX_HORAS_SALA_DIA = 4
-
-# Si un día tiene bloqueadas 4 horas o más (pero no el día completo, que ya queda
-# "CERRADO"), ese día no se asigna terreno.
-MIN_HORAS_BLOQUEO_SIN_TERRENO = 4
-
 NOMBRES_DUPLAS = {
     "D1": "Bruno-Ignacia A", "D2": "Daniela-Paula", "D3": "Francisca-Tiare",
     "D4": "Laura-Alan", "D5": "Maida-Vale", "D6": "Marcelo-Cony", "D7": "Sol-Fran"
@@ -70,8 +61,7 @@ def obtener_iniciales(id_dupla):
 COLORES_DUPLAS = {
     "D1": "#1E88E5", "D2": "#2E7D32", "D3": "#8E24AA", "D4": "#D84315",
     "D5": "#C2185B", "D6": "#00838F", "D7": "#E64A19", "---": "#CCCCCC",
-    "T Disp": "#757575", "L": "#B0B0B0", "CERRADO": "#D32F2F",
-    "SIN TERRENO": "#F57C00"
+    "T Disp": "#757575", "L": "#B0B0B0", "CERRADO": "#D32F2F"
 }
 
 DUPLAS = list(NOMBRES_DUPLAS.keys())
@@ -165,12 +155,8 @@ def asignar_terrenos_mensuales(dias_habiles, dict_bloqueos, año, mes):
         semanas_asignadas = {d: [] for d in DUPLAS}
         conteo_dupla = {d: 0 for d in DUPLAS}
         for f_str, info in dict_bloqueos.items():
-            if len(info['bloques']) == len(BLOQUES):
-                mapping[f_str] = "CERRADO"
-            elif len(info['bloques']) >= MIN_HORAS_BLOQUEO_SIN_TERRENO:
-                mapping[f_str] = "SIN TERRENO"
-            elif len(info['bloques']) > 0:
-                mapping[f_str] = "T Disp"
+            if len(info['bloques']) == len(BLOQUES): mapping[f_str] = "CERRADO"
+            elif len(info['bloques']) > 0: mapping[f_str] = "T Disp"
         if año == 2026 and mes == 8 and mapping.get("Lun 03") == "T Disp":
             mapping["Lun 03"] = "D3"; conteo_dupla["D3"] += 1
             sem_d3 = next(d["semana"] for d in dias_habiles if d["fecha_str"] == "Lun 03")
@@ -205,13 +191,6 @@ def generar_calendario_mensual(año, mes, dict_bloqueos):
     horas_turno_semana = {d: {"mañana": 0, "tarde": 0} for d in DUPLAS}
     semana_actual = None
 
-    # --- Alternancia del horario de los BLOQUES DOBLES, por día de la semana ---
-    # Registra en qué turno (mañana/tarde) tuvo cada dupla su último bloque doble
-    # en cada día de la semana (Lun..Vie), a lo largo de TODO el mes. Así, si a una
-    # dupla le vuelve a tocar doble el mismo día de la semana (ej. otro miércoles),
-    # se prioriza invertir el horario en vez de repetir siempre el mismo tramo.
-    ultimo_turno_doble_dia_semana = {d: {dia: None for dia in DIAS_NOMBRE} for d in DUPLAS}
-
     for dia in dias_mes:
         f_str = dia["fecha_str"]; n_dia = dia["nombre_dia"]; sem = dia["semana"]
 
@@ -230,7 +209,6 @@ def generar_calendario_mensual(año, mes, dict_bloqueos):
 
         t_diario = mapping_terrenos.get(f_str) or "T Disp"
         uso_hoy = {d: 0 for d in DUPLAS} # Reset diario para obligar a rotar duplas
-        horas_trabajadas_hoy = {d: 0 for d in DUPLAS}  # bloques horarios distintos trabajados hoy (tope MAX_HORAS_SALA_DIA)
 
         # --- Continuidad de bloques dobles dentro del día ---
         # Si un bloque queda con doble, se intenta que la MISMA dupla siga en el/los
@@ -263,13 +241,12 @@ def generar_calendario_mensual(año, mes, dict_bloqueos):
             candidatos_bloque = list(pool_dia)
 
             # Regla D6 Lunes
-            if n_dia == "Lun" and b == BLOQUES[1] and "D6" in candidatos_bloque and horas_trabajadas_hoy["D6"] < MAX_HORAS_SALA_DIA:
+            if n_dia == "Lun" and b == BLOQUES[1] and "D6" in candidatos_bloque:
                 asignacion_bloque["S1"] = "D6"; candidatos_bloque.remove("D6")
 
             # 1. ASIGNAR BLOQUE DOBLE (Prioridad: < 10, Límite Estricto: 14)
-            # Solo duplas que NO están en Teletrabajo hoy, y que no llevan ya el tope
-            # diario de horas (MAX_HORAS_SALA_DIA), pueden hacer bloques dobles
-            candidatos_dobles = [c for c in candidatos_bloque if c not in TELETRABAJO[n_dia] and uso_dobles_mensual[c] < 14 and horas_trabajadas_hoy[c] < MAX_HORAS_SALA_DIA]
+            # Solo duplas que NO están en Teletrabajo hoy pueden hacer bloques dobles
+            candidatos_dobles = [c for c in candidatos_bloque if c not in TELETRABAJO[n_dia] and uso_dobles_mensual[c] < 14]
 
             # ¿Seguimos la racha de dobles del bloque anterior con la misma dupla?
             continuar_racha = (
@@ -282,24 +259,15 @@ def generar_calendario_mensual(año, mes, dict_bloqueos):
             if continuar_racha:
                 d_doble = racha_doble_dupla
             else:
-                # Primero se intenta SOLO con quienes invertirían el turno respecto a su
-                # último doble el mismo día de semana (ej. si el miércoles pasado fue
-                # 9-11, hoy se prioriza que sea 14-17). Si nadie cumple eso (ej. solo
-                # queda 1 candidata elegible ese día), se cae al resto de candidatas.
-                invierten = [c for c in candidatos_dobles if ultimo_turno_doble_dia_semana[c][n_dia] != turno_actual]
-                pool_dobles = invierten if invierten else candidatos_dobles
-
-                # Dentro de ese pool: primero los que no llegaron al mínimo de 10 dobles,
-                # luego por cantidad de dobles acumulados, turno de la semana pasada,
-                # y uso hoy/mes para diversidad
-                pool_dobles.sort(key=lambda x: (
+                # Ordenar: primero los que tienen menos de 10 dobles, luego los que NO
+                # repitieron turno la semana pasada, luego por uso hoy/mes para diversidad
+                candidatos_dobles.sort(key=lambda x: (
                     uso_dobles_mensual[x] >= 10,
                     uso_dobles_mensual[x],
                     1 if turno_previo[x] == turno_actual else 0,
                     uso_hoy[x],
                     uso_mensual[x],
                 ))
-                d_doble = pool_dobles[0] if pool_dobles else None
                 d_doble = candidatos_dobles[0] if candidatos_dobles else None
 
             if d_doble:
@@ -315,22 +283,15 @@ def generar_calendario_mensual(año, mes, dict_bloqueos):
                 if d_doble == racha_doble_dupla and racha_doble_idx == idx_b - 1:
                     racha_doble_len += 1
                 else:
-                    # Es el INICIO de una racha nueva (no la continuación de la anterior):
-                    # se registra el turno para poder invertirlo la próxima vez que a esta
-                    # dupla le toque doble el mismo día de la semana.
                     racha_doble_len = 1
-                    ultimo_turno_doble_dia_semana[d_doble][n_dia] = turno_actual
                 racha_doble_dupla = d_doble
                 racha_doble_idx = idx_b
             else:
                 racha_doble_dupla = None; racha_doble_len = 0; racha_doble_idx = None
 
             # 2. LLENADO TOTAL INDIVIDUAL (Incluye duplas en Teletrabajo)
-            # Se descarta primero a quien ya llegó al tope diario de horas
-            # (MAX_HORAS_SALA_DIA); entre el resto, ordenamos por uso_hoy para obligar
-            # a rotar y no concentrar solo dos duplas, y entre empatados se prioriza a
-            # quien NO tuvo este mismo turno la semana pasada
-            candidatos_bloque = [c for c in candidatos_bloque if horas_trabajadas_hoy[c] < MAX_HORAS_SALA_DIA]
+            # Ordenamos por uso_hoy para obligar a rotar y no concentrar solo dos duplas;
+            # entre empatados, se prioriza a quien NO tuvo este mismo turno la semana pasada
             candidatos_bloque.sort(key=lambda x: (
                 uso_hoy[x],
                 1 if turno_previo[x] == turno_actual else 0,
@@ -344,7 +305,6 @@ def generar_calendario_mensual(año, mes, dict_bloqueos):
                     asignacion_bloque[s] = dupla_elegida
 
             # 3. GUARDAR Y ACTUALIZAR CONTADORES
-            duplas_en_bloque = set()
             for s in SALAS:
                 dupla_final = asignacion_bloque[s]
                 data.append({"Semana": sem, "Fecha": f_str, "T_Diario": t_diario, "Bloque": b, "Ubicación": s, "Dupla": dupla_final})
@@ -352,10 +312,6 @@ def generar_calendario_mensual(año, mes, dict_bloqueos):
                     uso_mensual[dupla_final] += 1
                     uso_hoy[dupla_final] += 1
                     horas_turno_semana[dupla_final][turno_actual] += 1
-                    duplas_en_bloque.add(dupla_final)
-            # Una dupla que trabajó en 1 o 2 salas este bloque solo consume 1 hora real
-            for d_b in duplas_en_bloque:
-                horas_trabajadas_hoy[d_b] += 1
 
     return pd.DataFrame(data), reuniones_t
 
@@ -386,60 +342,6 @@ def render_tabla_dia(df_dia, fecha_str, dict_bloqueos, foco_duplas=[]):
                 html += f"<td style='{style_td_base} background-color: {bg_c}; color: {color_t}; font-weight: 800; opacity: {op};'>{texto_mostrar}</td>"
         html += "</tr>"
     return html + "</tbody></table>"
-
-def render_dia_editable(supabase, mes_sel, m_data, df_dia, fecha_str, es_admin, foco_duplas=[]):
-    """Como render_tabla_dia, pero si el mes NO está fijado, el usuario es admin y el
-    día NO tiene bloqueos (ni está CERRADO), permite editar las asignaciones de S1/S2/S3
-    directamente en la vista de calendario, guardando al toque en Supabase, sin tener
-    que ir al Editor Manual del panel de control.
-
-    Nota: en días con bloqueos, con el mes fijado, o para usuarios no-admin, se usa la
-    tabla de solo lectura de siempre (render_tabla_dia) para no arriesgar pisar un
-    bloqueo. El modo "Enfoque" tampoco se resalta dentro de la grilla editable, solo
-    en la tabla de solo lectura."""
-    dict_bloqueos = m_data['bloqueos']
-    hay_bloqueo = fecha_str in dict_bloqueos
-    t_diario = df_dia["T_Diario"].iloc[0] if not df_dia.empty else "T Disp"
-    editable = es_admin and (not m_data['fijado']) and (not hay_bloqueo) and (t_diario != "CERRADO")
-
-    if not editable:
-        st.markdown(render_tabla_dia(df_dia, fecha_str, dict_bloqueos, foco_duplas), unsafe_allow_html=True)
-        return
-
-    pivot = pd.DataFrame({"Bloque": BLOQUES})
-    for s in SALAS:
-        valores = []
-        for b in BLOQUES:
-            res = df_dia[(df_dia["Bloque"] == b) & (df_dia["Ubicación"] == s)]
-            valores.append(res["Dupla"].values[0] if not res.empty else "---")
-        pivot[s] = valores
-
-    opciones = DUPLAS + ["---", "L"]
-    key_editor = f"editor_{mes_sel}_{fecha_str.replace(' ', '_')}"
-    editado = st.data_editor(
-        pivot,
-        key=key_editor,
-        hide_index=True,
-        disabled=["Bloque"],
-        column_config={
-            "Bloque": st.column_config.TextColumn("Bloque"),
-            "S1": st.column_config.SelectboxColumn("S1", options=opciones, required=True),
-            "S2": st.column_config.SelectboxColumn("S2", options=opciones, required=True),
-            "S3": st.column_config.SelectboxColumn("S3", options=opciones, required=True),
-        },
-        use_container_width=True,
-    )
-
-    if not editado.equals(pivot):
-        df_real = st.session_state.meses_data[mes_sel]['df']
-        for i, b in enumerate(BLOQUES):
-            for s in SALAS:
-                nueva_dupla = editado.at[i, s]
-                idx = df_real[(df_real["Fecha"] == fecha_str) & (df_real["Bloque"] == b) & (df_real["Ubicación"] == s)].index
-                if not idx.empty:
-                    df_real.at[idx[0], "Dupla"] = nueva_dupla
-        guardar_datos(supabase)
-        st.rerun()
 
 def render_resumen_mensual(df_total, foco_duplas=[]):
     t_sala, h_real, dbl, terr = calcular_metricas(df_total)
@@ -523,8 +425,6 @@ def exportar_excel_visual(df_total, dict_bloqueos):
                 current_f_str = fecha_act[0]; t_asignado = df_sem[df_sem["Fecha"] == current_f_str]["T_Diario"].iloc[0]
                 if t_asignado in ["T Disp", "CERRADO"]:
                     label_t = "Disponible"
-                elif t_asignado == "SIN TERRENO":
-                    label_t = "Sin terreno (bloqueo)"
                 else:
                     label_t = f"{t_asignado}({obtener_iniciales(t_asignado)})"
                 worksheet.merge_range(curr_row, col_start, curr_row, col_start + 3, current_f_str, fmt_date); worksheet.merge_range(curr_row + 1, col_start, curr_row + 1, col_start + 3, f"T: {label_t}", fmt_terrain); worksheet.write(curr_row + 2, col_start, "Bloque", fmt_header); worksheet.write(curr_row + 2, col_start + 1, "S1", fmt_header); worksheet.write(curr_row + 2, col_start + 2, "S2", fmt_header); worksheet.write(curr_row + 2, col_start + 3, "S3", fmt_header)
@@ -668,7 +568,6 @@ def render_gestion_salas(supabase, es_admin=True):
 
                 st.markdown("---")
                 st.subheader("🛠️ Editor Manual")
-                st.caption("También puedes editar directamente haciendo clic en las celdas del calendario más abajo, en los días sin bloqueos.")
                 df_edit = m_data['df']
                 edit_fecha = st.selectbox("Día:", df_edit["Fecha"].unique(), key="salas_edit_fecha")
                 edit_bloque = st.selectbox("Bloque:", BLOQUES, key="salas_edit_bloque")
@@ -684,7 +583,7 @@ def render_gestion_salas(supabase, es_admin=True):
                 st.markdown("---")
                 st.subheader("🚜 Editor de Terrenos")
                 edit_t_fecha = st.selectbox("Día Terreno:", df_edit["Fecha"].unique(), key="salas_edit_t_fecha")
-                nuevo_t = st.selectbox("Dupla Terreno:", DUPLAS + ["T Disp", "SIN TERRENO"], key="salas_edit_t_dupla")
+                nuevo_t = st.selectbox("Dupla Terreno:", DUPLAS + ["T Disp"], key="salas_edit_t_dupla")
                 if st.button("💾 Cambiar Terreno", key="salas_edit_t_aplicar"):
                     st.session_state.meses_data[mes_sel]['df'].loc[st.session_state.meses_data[mes_sel]['df']["Fecha"] == edit_t_fecha, "T_Diario"] = nuevo_t
                     guardar_datos(supabase)
@@ -724,10 +623,8 @@ def render_gestion_salas(supabase, es_admin=True):
                     st.markdown(f"<p class='d-header'>{cur_f}</p>", unsafe_allow_html=True)
                     if t_asig in ["T Disp", "CERRADO"]:
                         label_t = "Disponible"
-                    elif t_asig == "SIN TERRENO":
-                        label_t = "Sin terreno (bloqueo ≥4h)"
                     else:
                         label_t = f"{t_asig}({obtener_iniciales(t_asig)})"
                     st.markdown(f"<p class='t-header' style='color:{COLORES_DUPLAS.get(t_asig, '#757575')}'>T: {label_t}</p>", unsafe_allow_html=True)
-                    render_dia_editable(supabase, mes_sel, m_data, df_sem[df_sem["Fecha"] == cur_f], cur_f, es_admin, foco_duplas)
+                    st.markdown(render_tabla_dia(df_sem[df_sem["Fecha"] == cur_f], cur_f, m_data['bloqueos'], foco_duplas), unsafe_allow_html=True)
         st.markdown(render_resumen_semanal(df_sem, foco_duplas), unsafe_allow_html=True)
