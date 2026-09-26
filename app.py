@@ -40,6 +40,7 @@ COLOR_GRIS_FONDO = "#F8F9F9"
 
 SIS_HTML_FILE = "analitica_sis.html"
 
+# Credenciales de acceso originales
 CREDENTIALS = {
     "admin": {"pass": "cerrillos2026", "role": "admin", "name": "Administrador"},
     "bruno.diaz": {"pass": "fae.cerrillos", "role": "user", "name": "Bruno Diaz-Casandra Mora"},
@@ -51,15 +52,16 @@ CREDENTIALS = {
     "solange.francisco": {"pass": "fae.cerrillos", "role": "user", "name": "Solange Alegría-Francisco Carvajal"}
 }
 
-PROF_BASE = sorted([
-    "Bruno Diaz-Casandra Mora", 
-    "Daniela Izquierdo-Paula Leyton", 
-    "Francisca Salazar-Tiare Riquelme", 
-    "Laura Arancibia-Alan Zamora", 
-    "Maida Muñoz-Valeria Orellana", 
-    "Marcelo Huento-María Constanza Correa", 
-    "Solange Alegría-Francisco Carvajal"
-])
+# Mapeo base para conectar Duplas (1 a 7) con los nombres de profesionales actuales en Supabase
+DUPLAS_MAPA_INICIAL = {
+    "Dupla 1": "Bruno Diaz-Casandra Mora",
+    "Dupla 2": "Daniela Izquierdo-Paula Leyton",
+    "Dupla 3": "Francisca Salazar-Tiare Riquelme",
+    "Dupla 4": "Laura Arancibia-Alan Zamora",
+    "Dupla 5": "Maida Muñoz-Valeria Orellana",
+    "Dupla 6": "Marcelo Huento-María Constanza Correa",
+    "Dupla 7": "Solange Alegría-Francisco Carvajal"
+}
 
 NOMBRES_TABLA = [
     "Evaluación", "Avances 1", "Avances 2", "Avances 3", "Avances 4", 
@@ -166,6 +168,34 @@ if not st.session_state.logged_in:
     login_screen()
     st.stop()
 
+# Funciones para manejar la configuración visual de las duplas en memoria/nube sin romper datos
+def cargar_duplas_config():
+    try:
+        response = supabase.table("config_duplas").select("*").execute()
+        df = pd.DataFrame(response.data)
+        if df.empty:
+            return DUPLAS_MAPA_INICIAL
+        return dict(zip(df['dupla'], df['integrantes']))
+    except:
+        return DUPLAS_MAPA_INICIAL
+
+def guardar_duplas_config(mapping_dict):
+    try:
+        for dupla, integrantes in mapping_dict.items():
+            supabase.table("config_duplas").upsert({"dupla": dupla, "integrantes": integrantes}, on_conflict="dupla").execute()
+    except Exception as e:
+        st.sidebar.error(f"Error al guardar duplas: {e}")
+
+duplas_nombres = cargar_duplas_config()
+
+# Diccionarios inversos para mapear rápido
+def obtener_nombre_completo(prof_bd):
+    """Dado el texto que está en la BD (ej. Bruno Diaz-Casandra Mora), busca su Dupla asociada"""
+    for dupla, integrantes in duplas_nombres.items():
+        if prof_bd.strip().lower() == integrantes.strip().lower() or prof_bd.strip().lower() == dupla.lower():
+            return dupla
+    return prof_bd
+
 def limpiar_y_asegurar_unicos(columnas):
     nombres_limpios = []
     for i, col in enumerate(columnas):
@@ -213,21 +243,6 @@ def extraer_objetivo_al_inicio(texto):
 def limpiar_descripcion_original(texto):
     texto = str(texto).strip()
     return re.sub(r'^\((.*?)\)', '', texto).strip()
-
-def formatear_fecha_larga(valor):
-    try:
-        meses = {1:"enero", 2:"febrero", 3:"marzo", 4:"abril", 5:"mayo", 6:"junio", 7:"julio", 8:"agosto", 9:"septiembre", 10:"octubre", 11:"noviembre", 12:"diciembre"}
-        dias = {0:"lunes", 1:"martes", 2:"miércoles", 3:"jueves", 4:"viernes", 5:"sábado", 6:"domingo"}
-        dt = pd.to_datetime(valor, dayfirst=True)
-        return f"{dias[dt.weekday()]}, {dt.day} de {meses[dt.month]} de {dt.year}"
-    except:
-        return valor
-
-def normalizar_texto(texto):
-    if not isinstance(texto, str):
-        return ""
-    texto = texto.strip().upper()
-    return ''.join(c for c in unicodedata.normalize('NFKD', texto) if unicodedata.category(c) != 'Mn')
 
 def cargar_casos():
     try:
@@ -292,15 +307,6 @@ def convertir_a_excel_completo(df_casos_actuales, df_entregas_total):
         df_final.to_excel(writer, index=False, sheet_name='Listado_Completo')
     return output.getvalue()
 
-def convertir_a_excel_simple(df):
-    output = io.BytesIO()
-    df_simple = df[["#", "Caso", "Profesional", "Fecha Ingreso", "RIT"]].copy()
-    df_simple['Fecha Ingreso'] = pd.to_datetime(df_simple['Fecha Ingreso']).dt.strftime('%d-%m-%Y')
-    df_simple = df_simple.rename(columns={"#": "N°", "Fecha Ingreso": "Fecha de Ingreso"})
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_simple.to_excel(writer, index=False, sheet_name='Nomina_FAE')
-    return output.getvalue()
-
 def generar_pdf_visual(prof_nombre, df_resumen, cumple_count, no_cumple_count):
     pdf = FPDF()
     pdf.add_page()
@@ -310,7 +316,7 @@ def generar_pdf_visual(prof_nombre, df_resumen, cumple_count, no_cumple_count):
     pdf.set_font("helvetica", "B", 14); pdf.set_text_color(120, 150, 40)
     pdf.cell(0, 10, "FAE DEM CERRILLOS", ln=True, align="C")
     pdf.set_text_color(49, 51, 63); pdf.set_font("helvetica", "", 10)
-    pdf.cell(0, 10, f"Profesional: {prof_nombre} | Generado: {datetime.now().strftime('%d-%m-%Y')}", ln=True, align="C")
+    pdf.cell(0, 10, f"Dupla / Profesional: {prof_nombre} | Generado: {datetime.now().strftime('%d-%m-%Y')}", ln=True, align="C")
     pdf.ln(15)
     
     pdf.set_font("helvetica", "B", 14); pdf.set_text_color(93, 109, 126)
@@ -360,6 +366,19 @@ def generar_pdf_cronograma(caso_nombre, f_ingreso, df_hitos):
         pdf.ln()
     return bytes(pdf.output())
 
+# --- CONFIGURACIÓN DE ASIGNACIÓN DE PROFESIONALES A DUPLAS EN BARRA LATERAL (ADMIN) ---
+if st.session_state.user_role == "admin":
+    with st.sidebar.expander("⚙️ Asignar Profesionales a Duplas"):
+        nuevo_mapping = {}
+        with st.form("form_config_duplas"):
+            for dupla_id in [f"Dupla {i}" for i in range(1, 8)]:
+                actual = duplas_nombres.get(dupla_id, "")
+                nuevo_mapping[dupla_id] = st.text_input(f"Integrantes {dupla_id}", value=actual)
+            if st.form_submit_button("Guardar Cambios de Duplas"):
+                guardar_duplas_config(nuevo_mapping)
+                st.success("¡Asignación actualizada!")
+                st.rerun()
+
 if st.session_state.user_role == "admin":
     st.sidebar.header("1. Registrar Nuevo Caso")
     with st.sidebar.form("nuevo_caso", clear_on_submit=True):
@@ -367,7 +386,13 @@ if st.session_state.user_role == "admin":
         n_rit = st.text_input("Causa RIT")
         n_codnino = st.text_input("Cod. Niño")
         n_fecnac = st.date_input("Fecha de Nacimiento", datetime.now(), min_value=datetime(1990, 1, 1))
-        prof = st.selectbox("Profesional", PROF_BASE)
+        
+        # Opciones de selección para nuevo caso usando las duplas configuradas
+        opciones_duplas_form = [f"{d}: {duplas_nombres.get(d, '')}" for d in [f"Dupla {i}" for i in range(1, 8)]]
+        prof_elegido_form = st.selectbox("Asignar Dupla", opciones_duplas_form)
+        # Extraemos el valor real de los integrantes para que se guarde igual en Supabase sin romper nada
+        prof = prof_elegido_form.split(": ")[1]
+
         f_ing = st.date_input("Fecha Ingreso", datetime.now())
         if st.form_submit_button("Guardar Caso") and n_caso:
             try:
@@ -422,11 +447,12 @@ if st.session_state.user_role == "admin":
                         nombre_c = str(row[c_caso]).strip()
                         f_ing_dt = pd.to_datetime(row[c_fecha], errors='coerce', dayfirst=True)
                         f_ing_val = f_ing_dt.strftime('%Y-%m-%d') if pd.notnull(f_ing_dt) else None
-                        
+                        val_prof = str(row[c_prof]).strip()
+
                         if f_ing_val:
                             meta_vals = {
                                 "Caso": nombre_c, "RIT": str(row[c_rit]).strip() if c_rit else "S/R",
-                                "Profesional": str(row[c_prof]).strip(), "Fecha Ingreso": f_ing_val,
+                                "Profesional": val_prof, "Fecha Ingreso": f_ing_val,
                                 "codnino": str(row[c_codnino]).strip() if c_codnino else "S/I",
                                 "fechanacimiento": str(row[c_nacimiento]).strip() if c_nacimiento else "S/I",
                                 "Nacionalidad": str(row[c_nacionalidad]).strip() if c_nacionalidad else "S/I",
@@ -451,16 +477,16 @@ if st.session_state.user_role == "admin":
         except Exception as e: 
             st.sidebar.error(f"Error: {e}")
 
-df_casos_sidebar = cargar_casos()
+df_c_sidebar = cargar_casos()
 if st.session_state.user_role != "admin":
-    df_casos_sidebar = df_casos_sidebar[df_casos_sidebar['Profesional'] == st.session_state.user_name]
+    df_c_sidebar = df_c_sidebar[df_c_sidebar['Profesional'] == st.session_state.user_name]
 
 if st.session_state.user_role == "admin":
     st.sidebar.divider()
     st.sidebar.header("3. Registrar Envío")
-    if not df_casos_sidebar.empty:
+    if not df_c_sidebar.empty:
         with st.sidebar.form("registrar_envio", clear_on_submit=True):
-            caso_envio = st.selectbox("Selecciona el Caso", sorted(df_casos_sidebar['Caso'].unique()))
+            caso_envio = st.selectbox("Selecciona el Caso", sorted(df_c_sidebar['Caso'].unique()))
             informe_envio = st.selectbox("¿Qué informe envió?", NOMBRES_TABLA)
             f_envio = st.date_input("Fecha Real de Envío", datetime.now())
             if st.form_submit_button("Registrar Envío"):
@@ -475,8 +501,8 @@ if st.session_state.user_role == "admin":
 if st.session_state.user_role == "admin":
     st.sidebar.divider()
     st.sidebar.header("4. 🗑️ Eliminar Caso")
-    if not df_casos_sidebar.empty:
-        lista_borrar = sorted(df_casos_sidebar['Caso'].unique())
+    if not df_c_sidebar.empty:
+        lista_borrar = sorted(df_c_sidebar['Caso'].unique())
         caso_a_borrar = st.sidebar.selectbox("Caso a eliminar", ["---"] + lista_borrar)
         if st.sidebar.button("Eliminar permanentemente"):
             if caso_a_borrar != "---":
@@ -491,14 +517,26 @@ if st.session_state.user_role == "admin":
     st.sidebar.header("5. 🛠️ Gestión y Corrección")
     
     with st.sidebar.expander("📝 Editar Información del Caso"):
-        if not df_casos_sidebar.empty:
-            caso_a_editar = st.selectbox("Selecciona caso para editar", ["---"] + sorted(df_casos_sidebar['Caso'].unique()))
+        if not df_c_sidebar.empty:
+            caso_a_editar = st.selectbox("Selecciona caso para editar", ["---"] + sorted(df_c_sidebar['Caso'].unique()))
             if caso_a_editar != "---":
-                datos_actuales = df_casos_sidebar[df_casos_sidebar['Caso'] == caso_a_editar].iloc[0]
+                datos_actuales = df_c_sidebar[df_c_sidebar['Caso'] == caso_a_editar].iloc[0]
                 with st.form("form_unificado_editar"):
                     nuevo_nombre_c = st.text_input("Nombre del Caso", caso_a_editar)
                     nuevo_rit = st.text_input("Causa RIT", datos_actuales['RIT'])
-                    nuevo_prof = st.selectbox("Profesional", PROF_BASE, index=PROF_BASE.index(datos_actuales['Profesional']) if datos_actuales['Profesional'] in PROF_BASE else 0)
+                    
+                    prof_actual_val = datos_actuales['Profesional']
+                    opciones_edit = [f"{d}: {duplas_nombres.get(d, '')}" for d in [f"Dupla {i}" for i in range(1, 8)]]
+                    # Seleccionar por defecto la dupla que tenga este profesional
+                    idx_default = 0
+                    for idx_op, op_val in enumerate(opciones_edit):
+                        if prof_actual_val.lower() in op_val.lower():
+                            idx_default = idx_op
+                            break
+
+                    nuevo_prof_elegido = st.selectbox("Asignar Dupla", opciones_edit, index=idx_default)
+                    nuevo_prof = nuevo_prof_elegido.split(": ")[1]
+                    
                     nueva_fecha_ing = st.date_input("Fecha Ingreso", datos_actuales['Fecha Ingreso'])
                     
                     if st.form_submit_button("Guardar Cambios"):
@@ -580,30 +618,38 @@ if not df_c.empty:
     st.divider()
 
     if st.session_state.user_role == "admin":
-        tab_ind, tab_global, tab_espera, tab_sis, tab_word = st.tabs(["👤 Vista por Profesional", "🌎 Panel Global", "⏳ Lista de Espera", "📊 Analítica SIS", "📝 Automatizador Word"])
+        tab_ind, tab_global, tab_espera, tab_sis, tab_word = st.tabs(["👤 Vista por Duplas", "🌎 Panel Global", "⏳ Lista de Espera", "📊 Analítica SIS", "📝 Automatizador Word"])
     else:
-        tab_ind, tab_word = st.tabs(["👤 Mi Vista Profesional", "📝 Automatizador Word"])
+        tab_ind, tab_word = st.tabs(["👤 Mi Vista Dupla", "📝 Automatizador Word"])
 
     with tab_ind:
-        st.subheader("🔍 Consulta por Profesional")
+        st.subheader("🔍 Consulta por Duplas")
+        
+        # Mapeamos los profesionales existentes en la BD a su respectiva Dupla para mostrar en el select
+        profesionales_en_bd = df_c['Profesional'].unique()
+        
+        # Construir lista de selección limpia formateada como "Dupla X: Integrantes"
+        opciones_duplas_vista = []
+        mapping_opciones = {}
+        for dupla_id, integrantes in duplas_nombres.items():
+            etiqueta = f"{dupla_id} ({integrantes})"
+            opciones_duplas_vista.append(etiqueta)
+            mapping_opciones[etiqueta] = integrantes
+
         if st.session_state.user_role == "admin":
-            lista_profs_f = sorted(df_c['Profesional'].unique())
-            if st.session_state.prof_seleccionado_ind not in lista_profs_f:
-                st.session_state.prof_seleccionado_ind = lista_profs_f[0]
+            if not opciones_duplas_vista:
+                opciones_duplas_vista = ["Dupla 1"]
             
-            # --- NUEVA LÓGICA PARA MANTENER ESTADO ---
-            idx_prof = lista_profs_f.index(st.session_state.prof_seleccionado_ind)
-            prof_sel = st.selectbox(
-                "Selecciona Profesional:", 
-                lista_profs_f, 
-                index=idx_prof
-            )
-            st.session_state.prof_seleccionado_ind = prof_sel
+            sel_etiqueta = st.selectbox("Selecciona Dupla:", opciones_duplas_vista)
+            prof_sel = mapping_opciones[sel_etiqueta]
+            dupla_actual_id = [k for k, v in duplas_nombres.items() if v == prof_sel][0]
         else:
             prof_sel = st.session_state.user_name
-            st.info(f"Visualizando casos de: **{prof_sel}**")
+            dupla_actual_id = [k for k, v in duplas_nombres.items() if v.lower() == prof_sel.lower()]
+            dupla_actual_id = dupla_actual_id[0] if dupla_actual_id else "Mi Dupla"
+            st.info(f"Visualizando casos de: **{dupla_actual_id} ({prof_sel})**")
             
-        df_c_filtrado = df_c[df_c['Profesional'] == prof_sel]
+        df_c_filtrado = df_c[df_c['Profesional'].str.strip().str.lower() == prof_sel.strip().lower()]
 
         if not df_c_filtrado.empty:
             col_graf1, col_graf2 = st.columns([5, 1])
@@ -650,21 +696,14 @@ if not df_c.empty:
                 fig_barras = px.bar(df_grafico, x='Caso', y='Días', color='Tipo', text='Etiqueta', 
                                    hover_name=None,
                                    hover_data={
-                                       'Caso': False,
-                                       'Tipo': False,
-                                       'Días': False,
-                                       'Etiqueta': False,
-                                       'Fecha Referencia': True,
-                                       'Meses en Programa': True,
-                                       'Límite 3 meses': True
+                                       'Caso': False, 'Tipo': False, 'Días': False, 'Etiqueta': False,
+                                       'Fecha Referencia': True, 'Meses en Programa': True, 'Límite 3 meses': True
                                    },
                                    color_discrete_map={"Días desde último envío": COLOR_VERDE_IRIDEM, "días desde ingreso (Diagnóstico)": COLOR_GRIS_IRIDEM})
                 
-                # Líneas de referencia
                 fig_barras.add_hline(y=90, line_color="#ff7f7f", line_width=2)
                 fig_barras.add_hline(y=80, line_color="#f1c40f", line_width=2, line_dash="dash")
                 
-                # Anotaciones flotando fuera del gráfico (en la derecha) SIN negrita y con la palabra "días"
                 fig_barras.add_annotation(
                     x=1.01, y=90, xref="paper", yref="y",
                     text="Límite (90 días)", showarrow=False, xanchor="left",
@@ -676,19 +715,10 @@ if not df_c.empty:
                     font=dict(color="#d4ac0d", size=13)
                 )
 
-                # Altura a 400, ampliamos margen derecho y bajamos la leyenda
                 fig_barras.update_layout(
-                    xaxis_tickangle=-45, 
-                    height=400, 
-                    paper_bgcolor=COLOR_GRIS_FONDO, 
-                    plot_bgcolor=COLOR_GRIS_FONDO,
+                    xaxis_tickangle=-45, height=400, paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO,
                     margin=dict(t=30, b=40, l=40, r=120),
-                    legend=dict(
-                        yanchor="top",
-                        y=0.4,       # Esto baja la leyenda hacia la mitad inferior
-                        xanchor="left",
-                        x=1.05       # La mantiene en el margen derecho
-                    )
+                    legend=dict(yanchor="top", y=0.4, xanchor="left", x=1.05)
                 )
                 
                 evento_clic = st.plotly_chart(fig_barras, use_container_width=True, on_select="rerun", key="grafico_barras_ind")
@@ -701,22 +731,13 @@ if not df_c.empty:
             with col_graf2:
                 st.markdown("#### 🎯 Cumplimiento")
                 fig_torta = go.Figure(data=[go.Pie(
-                    labels=['Al día', 'Fuera de plazo'], 
-                    values=[cumple_count, no_cumple_count], 
-                    hole=.5, 
-                    marker_colors=[COLOR_VERDE_IRIDEM, COLOR_GRIS_IRIDEM],
-                    textposition='inside',
-                    insidetextorientation='horizontal',
-                    textinfo='percent',
-                    textfont=dict(size=14, color="white")
+                    labels=['Al día', 'Fuera de plazo'], values=[cumple_count, no_cumple_count], hole=.5, 
+                    marker_colors=[COLOR_VERDE_IRIDEM, COLOR_GRIS_IRIDEM], textposition='inside', insidetextorientation='horizontal', textinfo='percent', textfont=dict(size=14, color="white")
                 )])
                 fig_torta.update_layout(
-                    margin=dict(t=0, b=0, l=0, r=0), 
-                    height=300, 
-                    showlegend=True, 
+                    margin=dict(t=0, b=0, l=0, r=0), height=300, showlegend=True, 
                     legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
-                    paper_bgcolor=COLOR_GRIS_FONDO,
-                    plot_bgcolor=COLOR_GRIS_FONDO
+                    paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO
                 )
                 st.plotly_chart(fig_torta, use_container_width=True)
                 st.write(f"<div style='margin-top: 10px; text-align: center;'><b>Total: {cumple_count + no_cumple_count} casos</b></div>", unsafe_allow_html=True)
@@ -728,7 +749,7 @@ if not df_c.empty:
                     st.markdown('</div>', unsafe_allow_html=True)
 
             if st.session_state.ver_pendientes_ind and no_cumple_count > 0:
-                st.warning(f"⚠️ Casos Fuera de Plazo: {prof_sel}")
+                st.warning(f"⚠️ Casos Fuera de Plazo: {dupla_actual_id} ({prof_sel})")
                 df_pend_ind = pd.DataFrame(detalles_pendientes_ind)
                 df_pend_ind = df_pend_ind.sort_values(by="Venc. (3m)", ascending=True).reset_index(drop=True)
                 df_pend_ind['Venc. (3m)'] = pd.to_datetime(df_pend_ind['Venc. (3m)']).dt.strftime('%d-%m-%Y')
@@ -780,12 +801,9 @@ if not df_c.empty:
                     desfase_str = f"Atrasado por {abs(dias_res)} días" if dias_res < 0 else f"Faltan {dias_res} días"
                 
                 fila = {
-                    "Informe": nombre_inf, 
-                    "Fecha Límite": fecha_limite.strftime('%d-%m-%Y'), 
-                    "Fecha Envío Real": f_envio_str, 
-                    "Desfase": desfase_str, 
-                    "Fecha Corresponde": venc_ope_str, 
-                    "Vigencia (3m)": vigencia_str
+                    "Informe": nombre_inf, "Fecha Límite": fecha_limite.strftime('%d-%m-%Y'), 
+                    "Fecha Envío Real": f_envio_str, "Desfase": desfase_str, 
+                    "Fecha Corresponde": venc_ope_str, "Vigencia (3m)": vigencia_str
                 }
                 if i < 7: hitos_inicial.append(fila)
                 else: hitos_larga.append(fila)
@@ -799,7 +817,6 @@ if not df_c.empty:
                     st.warning(f"Error al generar PDF: {e}")
             
             st.dataframe(pd.DataFrame(hitos_inicial), use_container_width=True, hide_index=True)
-            
             tiene_larga_activa = len(hitos_larga) > 0 and m_ant_tit >= 21
             
             if tiene_larga_activa:
@@ -838,17 +855,18 @@ if not df_c.empty:
             df_maestro_vista = pd.DataFrame(resumen_maestro_pdf)
             if not df_maestro_vista.empty:
                 df_maestro_vista = df_maestro_vista.sort_values(by="Venc. (3m)", ascending=True).reset_index(drop=True)
-                
                 df_maestro_vista['F. Límite (Teo)'] = pd.to_datetime(df_maestro_vista['F. Límite (Teo)']).dt.strftime('%d-%m-%Y')
                 df_maestro_vista['Venc. (3m)'] = pd.to_datetime(df_maestro_vista['Venc. (3m)']).dt.strftime('%d-%m-%Y')
 
                 st.subheader("📋 Próximas Entregas (Ordenadas por Venc. 3m)")
                 st.dataframe(df_maestro_vista[["Caso", "Próximo Informe", "F. Límite (Teo)", "Venc. (3m)", "Estado (Operativo)"]], use_container_width=True, hide_index=True)
                 try:
-                    pdf_ejecutivo = generar_pdf_visual(prof_sel, df_maestro_vista, cumple_count, no_cumple_count)
-                    st.download_button("📥 Descargar Reporte Ejecutivo (PDF)", pdf_ejecutivo, f"Reporte_{prof_sel}.pdf")
+                    pdf_ejecutivo = generar_pdf_visual(f"{dupla_actual_id} ({prof_sel})", df_maestro_vista, cumple_count, no_cumple_count)
+                    st.download_button("📥 Descargar Reporte Ejecutivo (PDF)", pdf_ejecutivo, f"Reporte_{dupla_actual_id}.pdf")
                 except Exception as e:
                     st.info(f"Reporte PDF no disponible: {e}")
+        else:
+            st.info("No hay casos asociados actualmente a esta dupla en la base de datos.")
 
     if st.session_state.user_role == "admin":
         with tab_global:
@@ -862,6 +880,14 @@ if not df_c.empty:
             for p in sorted(df_c['Profesional'].unique()):
                 df_p = df_c[df_c['Profesional'] == p]
                 p_cumple, p_atraso = 0, 0
+                
+                # Encontrar la dupla a la que pertenece este profesional en la config
+                dupla_etiqueta_g = p
+                for d_id, d_int in duplas_nombres.items():
+                    if p.strip().lower() == d_int.strip().lower():
+                        dupla_etiqueta_g = f"{d_id}\n({d_int})"
+                        break
+
                 for c in df_p['Caso'].unique():
                     envios_c = df_e[df_e['Caso'] == c]
                     f_ing_c = df_c[df_c['Caso'] == c].iloc[0]['Fecha Ingreso']
@@ -881,7 +907,7 @@ if not df_c.empty:
                         detalles_pendientes_global.append({
                             "Caso": c,
                             "RIT": df_c[df_c['Caso'] == c].iloc[0]['RIT'],
-                            "Profesional": p,
+                            "Dupla": dupla_etiqueta_g.replace("\n", " "),
                             "Próximo Informe": proximo_inf_g,
                             "Venc. (3m)": venc_op_g,
                             "Meses": m_ant
@@ -895,13 +921,14 @@ if not df_c.empty:
 
                     resumen_global_maestro.append({
                         "Caso": c, "RIT": df_c[df_c['Caso'] == c].iloc[0]['RIT'],
-                        "Profesional": p, "Meses": m_ant, "Edad": edad,
+                        "Profesional": p, "Dupla_Label": dupla_etiqueta_g.replace("\n", " "), 
+                        "Meses": m_ant, "Edad": edad,
                         "codnino": df_c[df_c['Caso'] == c].iloc[0].get('codnino', 'S/I')
                     })
 
                 global_cumple += p_cumple
                 global_atraso += p_atraso
-                data_profesionales.append({"Profesional": p, "Al día": p_cumple, "Fuera de plazo": p_atraso})
+                data_profesionales.append({"Profesional": dupla_etiqueta_g, "Al día": p_cumple, "Fuera de plazo": p_atraso})
 
             c1, c2, c3 = st.columns(3)
             c1.metric("Total Casos", global_cumple + global_atraso)
@@ -927,15 +954,14 @@ if not df_c.empty:
                 fig_comp = px.bar(pd.DataFrame(data_profesionales), x="Profesional", y=["Al día", "Fuera de plazo"], 
                                   color_discrete_map={"Al día": COLOR_VERDE_IRIDEM, "Fuera de plazo": COLOR_GRIS_IRIDEM}, 
                                   barmode="group", text_auto=True)
-                fig_comp.update_layout(xaxis_tickangle=-45, height=400, paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO)
+                fig_comp.update_layout(xaxis_tickangle=-25, height=420, paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO)
                 y_total_fijo = max([max(fp["Al día"], fp["Fuera de plazo"]) for fp in data_profesionales], default=0) + 3
                 y_total_fijo = max(y_total_fijo, 22)
                 for fila_prof in data_profesionales:
                     total_prof = fila_prof["Al día"] + fila_prof["Fuera de plazo"]
                     fig_comp.add_annotation(
                         x=fila_prof["Profesional"], y=y_total_fijo,
-                        text=f"{total_prof}<br>Total",
-                        showarrow=False
+                        text=f"{total_prof}<br>Total", showarrow=False
                     )
                 st.plotly_chart(fig_comp, use_container_width=True)
             with col_g2:
@@ -955,50 +981,68 @@ if not df_c.empty:
                 edad_txt = f"{info_c['Edad']} años" if info_c['Edad'] != "S/I" else "S/I"
                 st.markdown(f"""
                     <div class="case-info-banner">
-                        <b>🆔 Cod. Niño:</b> {info_c['codnino']} | <b>👤 Caso:</b> {info_c['Caso']} | <b>🎂 Edad:</b> {edad_txt} | <b>📄 RIT:</b> {info_c['RIT']} | <b>🤝 Profesional:</b> {info_c['Profesional']} | <b>⏱️ Antigüedad:</b> {info_c['Meses']} meses
+                        <b>🆔 Cod. Niño:</b> {info_c['codnino']} | <b>👤 Caso:</b> {info_c['Caso']} | <b>🎂 Edad:</b> {edad_txt} | <b>📄 RIT:</b> {info_c['RIT']} | <b>🤝 Dupla:</b> {info_c['Dupla_Label']} | <b>⏱️ Antigüedad:</b> {info_c['Meses']} meses
                     </div>
                 """, unsafe_allow_html=True)
 
             st.divider()
             st.subheader("📋 Lista Maestra")
-            st.dataframe(df_c, use_container_width=True, hide_index=True)
+            df_c_tabla = df_c.copy()
+            
+            def traducir_prof_tabla(p_val):
+                for d_id, d_int in duplas_nombres.items():
+                    if p_val.strip().lower() == d_int.strip().lower():
+                        return f"{d_id} ({d_int})"
+                return p_val
+
+            df_c_tabla['Profesional'] = df_c_tabla['Profesional'].apply(traducir_prof_tabla)
+            st.dataframe(df_c_tabla, use_container_width=True, hide_index=True)
+            
             col_dl1, col_dl2 = st.columns(2)
             with col_dl1:
                 st.download_button("📥 Descargar Matriz Completa (Excel)", convertir_a_excel_completo(df_c, df_e), "Matriz_Completa_FAE.xlsx")
             with col_dl2:
-                df_lista_simple = df_c[["Caso", "Profesional"]].copy().sort_values("Caso").reset_index(drop=True)
+                df_lista_simple = df_c_tabla[["Caso", "Profesional"]].copy().sort_values("Caso").reset_index(drop=True)
                 df_lista_simple.insert(0, "N°", range(1, len(df_lista_simple) + 1))
+                df_lista_simple = df_lista_simple.rename(columns={"Profesional": "Dupla"})
                 output_simple = io.BytesIO()
                 with pd.ExcelWriter(output_simple, engine='openpyxl') as writer:
                     df_lista_simple.to_excel(writer, index=False, sheet_name='Lista_Simple')
                 st.download_button("📋 Descargar Lista Simple (Excel)", output_simple.getvalue(), "Lista_Simple_FAE.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
     if st.session_state.user_role == "admin":
         with tab_espera:
             st.subheader("👥 Casos Activos por Dupla")
             st.caption("Referencia para decidir a quién asignar el próximo ingreso.")
-            conteo_casos_dupla = df_c.groupby('Profesional').size().reset_index(name='Casos Activos').sort_values('Profesional')
+            
+            conteo_casos_dupla = df_c.groupby('Profesional').size().reset_index(name='Casos Activos')
+            
+            # Formatear para mostrar ordenado por Dupla 1 a 7
+            data_conteo_limpio = []
+            for d_id in [f"Dupla {i}" for i in range(1, 8)]:
+                integrantes_dupla = duplas_nombres.get(d_id, "")
+                # Buscar cuántos casos tiene este integrante en la BD
+                match_fila = conteo_casos_dupla[conteo_casos_dupla['Profesional'].str.strip().str.lower() == integrantes_dupla.strip().lower()]
+                cant = int(match_fila['Casos Activos'].values[0]) if not match_fila.empty else 0
+                data_conteo_limpio.append({
+                    "Dupla_Label": f"{d_id}\n({integrantes_dupla})",
+                    "Casos Activos": cant
+                })
+
+            df_conteo_final = pd.DataFrame(data_conteo_limpio)
             fig_conteo_dupla = px.bar(
-                conteo_casos_dupla, x='Profesional', y='Casos Activos',
+                df_conteo_final, x='Dupla_Label', y='Casos Activos',
                 text='Casos Activos',
                 color_discrete_sequence=[COLOR_VERDE_IRIDEM]
             )
             
-            max_casos = conteo_casos_dupla['Casos Activos'].max() if not conteo_casos_dupla.empty else 10
-
-            fig_conteo_dupla.update_traces(
-                textposition='outside', 
-                textfont_size=11, 
-                width=0.4
-            )
+            max_casos = df_conteo_final['Casos Activos'].max() if not df_conteo_final.empty else 10
+            fig_conteo_dupla.update_traces(textposition='outside', textfont_size=11, width=0.4)
             fig_conteo_dupla.update_layout(
-                xaxis_tickangle=-45, 
-                height=350, 
-                paper_bgcolor=COLOR_GRIS_FONDO, 
-                plot_bgcolor=COLOR_GRIS_FONDO,
-                yaxis_title="N° de Casos", 
-                xaxis_title="",
+                xaxis_tickangle=-25, height=380, paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO,
+                yaxis_title="N° de Casos", xaxis_title="",
                 yaxis=dict(range=[0, max_casos * 1.25]),
-                margin=dict(t=50, b=120)
+                margin=dict(t=50, b=100)
             )
             
             col_graf_espera, col_vacia_espera = st.columns([1, 1])
@@ -1014,8 +1058,7 @@ if not df_c.empty:
                     lambda f: (hoy_le - f).days if pd.notnull(f) else None
                 )
                 def _calcular_edad_le(f_nac):
-                    if pd.isnull(f_nac):
-                        return None
+                    if pd.isnull(f_nac): return None
                     return hoy_le.year - f_nac.year - ((hoy_le.month, hoy_le.day) < (f_nac.month, f_nac.day))
                 if 'FechaNacimiento' in df_le.columns:
                     df_le['Edad'] = df_le['FechaNacimiento'].apply(_calcular_edad_le)
@@ -1032,28 +1075,21 @@ if not df_c.empty:
 
                 cols_acciones = ["visita_domiciliaria", "entrevista_inicial", "cumple_perfil", "no_cumple_perfil", "ficha_ingreso_completada"]
                 etiquetas_acciones = {
-                    "visita_domiciliaria": "Visita domiciliaria",
-                    "entrevista_inicial": "Entrevista inicial",
-                    "cumple_perfil": "Cumple perfil",
-                    "no_cumple_perfil": "No cumple perfil",
+                    "visita_domiciliaria": "Visita domiciliaria", "entrevista_inicial": "Entrevista inicial",
+                    "cumple_perfil": "Cumple perfil", "no_cumple_perfil": "No cumple perfil",
                     "ficha_ingreso_completada": "Ficha de ingreso completada"
                 }
                 for col_acc in cols_acciones:
-                    if col_acc not in df_le.columns:
-                        df_le[col_acc] = False
-                    else:
-                        df_le[col_acc] = df_le[col_acc].fillna(False)
+                    if col_acc not in df_le.columns: df_le[col_acc] = False
+                    else: df_le[col_acc] = df_le[col_acc].fillna(False)
 
                 st.info(f"Actualmente hay **{len(df_le)}** niños/as en lista de espera.")
 
                 col_config_acciones = {c: st.column_config.CheckboxColumn(etiquetas_acciones[c]) for c in cols_acciones}
                 cols_no_editables = [c for c in df_le.columns if c not in cols_acciones and c != 'id']
-                config_disabled = {c: None for c in cols_no_editables}
 
                 df_le_editado = st.data_editor(
-                    df_le,
-                    use_container_width=True,
-                    hide_index=True,
+                    df_le, use_container_width=True, hide_index=True,
                     column_config=col_config_acciones,
                     disabled=cols_no_editables + (['id'] if 'id' in df_le.columns else []),
                     key="editor_lista_espera"
@@ -1061,10 +1097,9 @@ if not df_c.empty:
 
                 if st.button("💾 Guardar Cambios en Acciones Realizadas"):
                     if 'id' not in df_le.columns:
-                        st.error("No se puede guardar: falta la columna 'id' en la tabla. Contacta soporte técnico.")
+                        st.error("No se puede guardar: falta la columna 'id' en la tabla.")
                     else:
                         cambios = 0
-                        errores = 0
                         for idx in df_le.index:
                             fila_original = df_le.loc[idx]
                             fila_nueva = df_le_editado.loc[idx]
@@ -1073,13 +1108,9 @@ if not df_c.empty:
                                 try:
                                     supabase.table("lista_espera").update(diffs).eq("id", fila_original['id']).execute()
                                     cambios += 1
-                                except Exception as e:
-                                    errores += 1
+                                except: pass
                         if cambios:
                             st.success(f"✅ {cambios} registro(s) actualizado(s).")
-                        if errores:
-                            st.error(f"❌ {errores} registro(s) no se pudieron guardar. Verifica que las columnas existan en Supabase (ver instrucciones).")
-                        if cambios:
                             st.rerun()
             else: st.success("No hay casos en lista de espera.")
 
@@ -1093,11 +1124,7 @@ if not df_c.empty:
                     rit_ref = r.get('RIT', 'S/R') if pd.notnull(r.get('RIT')) else "S/R"
                     opciones_le[f"{nombre_completo} - RIT {rit_ref}"] = idx
 
-                seleccion_le = st.selectbox(
-                    "Selecciona a la persona de la Lista de Espera",
-                    ["---"] + list(opciones_le.keys()),
-                    key="sel_le_a_caso"
-                )
+                seleccion_le = st.selectbox("Selecciona a la persona de la Lista de Espera", ["---"] + list(opciones_le.keys()), key="sel_le_a_caso")
 
                 if seleccion_le != "---":
                     fila_le = df_le_reg.loc[opciones_le[seleccion_le]]
@@ -1111,7 +1138,11 @@ if not df_c.empty:
                         rit_nuevo = st.text_input("Causa RIT", rit_sugerido)
                         codnino_nuevo = st.text_input("Cod. Niño")
                         fecnac_nuevo = st.date_input("Fecha de Nacimiento", fecnac_sugerida, min_value=datetime(1990, 1, 1))
-                        prof_nuevo = st.selectbox("Profesional", PROF_BASE, key="prof_le_a_caso")
+                        
+                        opciones_duplas_le = [f"{d}: {duplas_nombres.get(d, '')}" for d in [f"Dupla {i}" for i in range(1, 8)]]
+                        prof_elegido_le = st.selectbox("Asignar Dupla", opciones_duplas_le, key="prof_le_a_caso")
+                        prof_nuevo = prof_elegido_le.split(": ")[1]
+
                         f_ing_nuevo = st.date_input("Fecha Ingreso", datetime.now(), key="fing_le_a_caso")
 
                         if st.form_submit_button("✅ Registrar como Caso y eliminar de Lista de Espera") and caso_nombre_nuevo:
@@ -1119,12 +1150,9 @@ if not df_c.empty:
                                 tribunal_le = fila_le.get('Tribunal')
                                 comuna_le = fila_le.get('ComunaNiño_a')
                                 nuevo_caso = {
-                                    "Caso": str(caso_nombre_nuevo).strip(),
-                                    "RIT": str(rit_nuevo).strip(),
-                                    "codnino": str(codnino_nuevo).strip(),
-                                    "fechanacimiento": str(fecnac_nuevo),
-                                    "Profesional": prof_nuevo,
-                                    "Fecha Ingreso": str(f_ing_nuevo),
+                                    "Caso": str(caso_nombre_nuevo).strip(), "RIT": str(rit_nuevo).strip(),
+                                    "codnino": str(codnino_nuevo).strip(), "fechanacimiento": str(fecnac_nuevo),
+                                    "Profesional": prof_nuevo, "Fecha Ingreso": str(f_ing_nuevo),
                                     "Tribunal": str(tribunal_le).strip() if pd.notnull(tribunal_le) else "S/I",
                                     "Comuna": str(comuna_le).strip() if pd.notnull(comuna_le) else "S/I",
                                 }
@@ -1134,8 +1162,7 @@ if not df_c.empty:
                                     supabase.table("lista_espera").delete().eq("id", fila_le['id']).execute()
                                 else:
                                     supabase.table("lista_espera").delete().match({
-                                        "Nombres": fila_le.get('Nombres'),
-                                        "Apellido_Paterno": fila_le.get('Apellido_Paterno'),
+                                        "Nombres": fila_le.get('Nombres'), "Apellido_Paterno": fila_le.get('Apellido_Paterno'),
                                         "Apellido_Materno": fila_le.get('Apellido_Materno'),
                                     }).execute()
 
