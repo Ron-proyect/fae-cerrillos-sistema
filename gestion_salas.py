@@ -38,6 +38,14 @@ HORARIOS_BLOQUES = {
     "B7 16-17hrs": (16, 17)
 }
 
+# Bloques de la mañana vs. de la tarde, usados para alternar el turno semana a semana
+BLOQUES_MANANA = BLOQUES[:4]   # B1 a B4 (9:00 a 13:00)
+BLOQUES_TARDE = BLOQUES[4:]    # B5 a B7 (14:00 a 17:00)
+
+# Tope de bloques dobles consecutivos que puede acumular UNA MISMA dupla en un día.
+# Da continuidad (no quedan "salteados") sin dejar que una sola dupla acapare el día completo.
+MAX_DOBLES_CONSECUTIVOS_DIA = 2
+
 NOMBRES_DUPLAS = {
     "D1": "Bruno-Ignacia A", "D2": "Daniela-Paula", "D3": "Francisca-Tiare",
     "D4": "Laura-Alan", "D5": "Maida-Vale", "D6": "Marcelo-Cony", "D7": "Sol-Fran"
@@ -167,7 +175,8 @@ def asignar_terrenos_mensuales(dias_habiles, dict_bloqueos, año, mes):
         if posible: return mapping, []
     return mapping, []
 
-# --- 5. MOTOR DE GENERACIÓN (REDISEÑADO: MIN 10, MAX 14, ANTICONCENTRACIÓN) ---
+# --- 5. MOTOR DE GENERACIÓN (REDISEÑADO: MIN 10, MAX 14, ANTICONCENTRACIÓN,
+#          CONTINUIDAD DE DOBLES Y ALTERNANCIA DE TURNO SEMANAL) ---
 def generar_calendario_mensual(año, mes, dict_bloqueos):
     dias_mes = obtener_dias_mes(año, mes)
     mapping_terrenos, reuniones_t = asignar_terrenos_mensuales(dias_mes, dict_bloqueos, año, mes)
@@ -175,10 +184,39 @@ def generar_calendario_mensual(año, mes, dict_bloqueos):
     uso_dobles_mensual = {d: 0 for d in DUPLAS}
     data = []
 
+    # --- Alternancia de turno (mañana/tarde) semana a semana ---
+    # turno_previo: turno que predominó en la última semana ya cerrada de cada dupla.
+    # horas_turno_semana: acumulado de bloques por turno de la semana EN CURSO.
+    turno_previo = {d: None for d in DUPLAS}
+    horas_turno_semana = {d: {"mañana": 0, "tarde": 0} for d in DUPLAS}
+    semana_actual = None
+
     for dia in dias_mes:
         f_str = dia["fecha_str"]; n_dia = dia["nombre_dia"]; sem = dia["semana"]
+
+        # Al cambiar de semana ISO, se "cierra" la anterior: se fija cuál fue el turno
+        # dominante de cada dupla para penalizarlo (no repetirlo) en la semana que empieza.
+        if semana_actual is not None and sem != semana_actual:
+            for d in DUPLAS:
+                h_m = horas_turno_semana[d]["mañana"]
+                h_t = horas_turno_semana[d]["tarde"]
+                if h_m or h_t:
+                    turno_previo[d] = "mañana" if h_m >= h_t else "tarde"
+                # Si la dupla no tuvo bloques esa semana (ej. días cerrados), se conserva
+                # el turno_previo que ya tenía de la última semana en que sí trabajó.
+            horas_turno_semana = {d: {"mañana": 0, "tarde": 0} for d in DUPLAS}
+        semana_actual = sem
+
         t_diario = mapping_terrenos.get(f_str) or "T Disp"
         uso_hoy = {d: 0 for d in DUPLAS} # Reset diario para obligar a rotar duplas
+
+        # --- Continuidad de bloques dobles dentro del día ---
+        # Si un bloque queda con doble, se intenta que la MISMA dupla siga en el/los
+        # bloque(s) inmediatamente siguiente(s) (hasta el tope MAX_DOBLES_CONSECUTIVOS_DIA)
+        # para que los dobles queden seguidos en el horario y no "salteados".
+        racha_doble_dupla = None
+        racha_doble_len = 0
+        racha_doble_idx = None
 
         if t_diario == "CERRADO":
             motivo = dict_bloqueos.get(f_str, {}).get('motivo', "DÍA CERRADO")
@@ -189,10 +227,14 @@ def generar_calendario_mensual(año, mes, dict_bloqueos):
         # Pool de duplas que no están en terreno hoy
         pool_dia = [d for d in DUPLAS if d != t_diario]
 
-        for b in BLOQUES:
+        for idx_b, b in enumerate(BLOQUES):
+            turno_actual = "mañana" if b in BLOQUES_MANANA else "tarde"
+
             if f_str in dict_bloqueos and b in dict_bloqueos[f_str]['bloques']:
                 motivo = dict_bloqueos[f_str]['motivo']
                 for s in SALAS: data.append({"Semana": sem, "Fecha": f_str, "T_Diario": t_diario, "Bloque": b, "Ubicación": s, "Dupla": motivo})
+                # Un bloque bloqueado corta cualquier racha de dobles en curso
+                racha_doble_dupla = None; racha_doble_len = 0; racha_doble_idx = None
                 continue
 
             asignacion_bloque = {"S1": "---", "S2": "---", "S3": "---"}
@@ -205,11 +247,30 @@ def generar_calendario_mensual(año, mes, dict_bloqueos):
             # 1. ASIGNAR BLOQUE DOBLE (Prioridad: < 10, Límite Estricto: 14)
             # Solo duplas que NO están en Teletrabajo hoy pueden hacer bloques dobles
             candidatos_dobles = [c for c in candidatos_bloque if c not in TELETRABAJO[n_dia] and uso_dobles_mensual[c] < 14]
-            # Ordenar: primero los que tienen menos de 10 dobles, luego por uso hoy para diversidad
-            candidatos_dobles.sort(key=lambda x: (uso_dobles_mensual[x] >= 10, uso_dobles_mensual[x], uso_hoy[x], uso_mensual[x]))
 
-            if len(candidatos_dobles) >= 1:
-                d_doble = candidatos_dobles[0]
+            # ¿Seguimos la racha de dobles del bloque anterior con la misma dupla?
+            continuar_racha = (
+                racha_doble_dupla is not None
+                and racha_doble_idx == idx_b - 1
+                and racha_doble_len < MAX_DOBLES_CONSECUTIVOS_DIA
+                and racha_doble_dupla in candidatos_dobles
+            )
+
+            if continuar_racha:
+                d_doble = racha_doble_dupla
+            else:
+                # Ordenar: primero los que tienen menos de 10 dobles, luego los que NO
+                # repitieron turno la semana pasada, luego por uso hoy/mes para diversidad
+                candidatos_dobles.sort(key=lambda x: (
+                    uso_dobles_mensual[x] >= 10,
+                    uso_dobles_mensual[x],
+                    1 if turno_previo[x] == turno_actual else 0,
+                    uso_hoy[x],
+                    uso_mensual[x],
+                ))
+                d_doble = candidatos_dobles[0] if candidatos_dobles else None
+
+            if d_doble:
                 # Intentar el doble (S1-S3 o S2-S3)
                 if asignacion_bloque["S1"] == "---":
                     asignacion_bloque["S1"] = d_doble; asignacion_bloque["S3"] = d_doble
@@ -219,9 +280,24 @@ def generar_calendario_mensual(año, mes, dict_bloqueos):
                 uso_dobles_mensual[d_doble] += 1
                 candidatos_bloque.remove(d_doble)
 
+                if d_doble == racha_doble_dupla and racha_doble_idx == idx_b - 1:
+                    racha_doble_len += 1
+                else:
+                    racha_doble_len = 1
+                racha_doble_dupla = d_doble
+                racha_doble_idx = idx_b
+            else:
+                racha_doble_dupla = None; racha_doble_len = 0; racha_doble_idx = None
+
             # 2. LLENADO TOTAL INDIVIDUAL (Incluye duplas en Teletrabajo)
-            # Ordenamos por uso_hoy para obligar a rotar y no concentrar solo dos duplas
-            candidatos_bloque.sort(key=lambda x: (uso_hoy[x], uso_mensual[x], random.random()))
+            # Ordenamos por uso_hoy para obligar a rotar y no concentrar solo dos duplas;
+            # entre empatados, se prioriza a quien NO tuvo este mismo turno la semana pasada
+            candidatos_bloque.sort(key=lambda x: (
+                uso_hoy[x],
+                1 if turno_previo[x] == turno_actual else 0,
+                uso_mensual[x],
+                random.random(),
+            ))
 
             for s in SALAS:
                 if asignacion_bloque[s] == "---" and candidatos_bloque:
@@ -235,6 +311,7 @@ def generar_calendario_mensual(año, mes, dict_bloqueos):
                 if dupla_final in DUPLAS:
                     uso_mensual[dupla_final] += 1
                     uso_hoy[dupla_final] += 1
+                    horas_turno_semana[dupla_final][turno_actual] += 1
 
     return pd.DataFrame(data), reuniones_t
 
