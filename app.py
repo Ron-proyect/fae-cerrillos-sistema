@@ -179,15 +179,18 @@ def cargar_duplas_config():
             if d_key and d_val:
                 resultado[d_key] = d_val
         return resultado
-    except:
+    except Exception as e:
+        st.sidebar.warning(f"⚠️ No se pudo leer 'config_duplas' desde Supabase, usando valores por defecto. Detalle: {e}")
         return DUPLAS_MAPA_INICIAL.copy()
 
 def guardar_duplas_config(mapping_dict):
     try:
         for dupla, integrantes in mapping_dict.items():
             supabase.table("config_duplas").upsert({"dupla": dupla, "integrantes": integrantes}, on_conflict="dupla").execute()
+        return True
     except Exception as e:
-        st.sidebar.error(f"Error al guardar duplas: {e}")
+        st.sidebar.error(f"❌ Error al guardar duplas: {e}")
+        return False
 
 # Carga dinámica y fresca de las duplas en cada ejecución
 duplas_nombres = cargar_duplas_config()
@@ -371,105 +374,106 @@ if st.session_state.user_role == "admin":
                 actual = duplas_nombres.get(dupla_id, DUPLAS_MAPA_INICIAL.get(dupla_id, ""))
                 nuevo_mapping[dupla_id] = st.text_input(f"Integrantes {dupla_id}", value=actual)
             if st.form_submit_button("Guardar Cambios de Duplas"):
-                guardar_duplas_config(nuevo_mapping)
-                st.success("¡Asignación actualizada!")
-                st.rerun()
+                if guardar_duplas_config(nuevo_mapping):
+                    st.success("¡Asignación actualizada!")
+                    st.rerun()
 
 if st.session_state.user_role == "admin":
-    st.sidebar.header("1. Registrar Nuevo Caso")
-    with st.sidebar.form("nuevo_caso", clear_on_submit=True):
-        n_caso = st.text_input("Nombre del Caso")
-        n_rit = st.text_input("Causa RIT")
-        n_codnino = st.text_input("Cod. Niño")
-        n_fecnac = st.date_input("Fecha de Nacimiento", datetime.now(), min_value=datetime(1990, 1, 1))
-        
-        opciones_duplas_form = [f"{d}: {duplas_nombres.get(d, '')}" for d in [f"Dupla {i}" for i in range(1, 8)]]
-        prof_elegido_form = st.selectbox("Asignar Dupla", opciones_duplas_form)
-        prof = prof_elegido_form.split(": ")[1]
+    with st.sidebar.expander("1. Registrar Nuevo Caso", expanded=False):
+        with st.form("nuevo_caso", clear_on_submit=True):
+            n_caso = st.text_input("Nombre del Caso")
+            n_rit = st.text_input("Causa RIT")
+            n_codnino = st.text_input("Cod. Niño")
+            n_fecnac = st.date_input("Fecha de Nacimiento", datetime.now(), min_value=datetime(1990, 1, 1))
 
-        f_ing = st.date_input("Fecha Ingreso", datetime.now())
-        if st.form_submit_button("Guardar Caso") and n_caso:
-            try:
-                nuevo = {
-                    "Caso": str(n_caso).strip(), 
-                    "RIT": str(n_rit).strip(), 
-                    "codnino": str(n_codnino).strip(),
-                    "fechanacimiento": str(n_fecnac),
-                    "Profesional": prof, 
-                    "Fecha Ingreso": str(f_ing)
-                }
-                supabase.table("casos").insert(nuevo).execute()
-                st.sidebar.success(f"✅ Caso {n_caso} guardado en la nube")
-                st.rerun()
-            except Exception as e:
-                st.sidebar.error(f"❌ Error al guardar: {e}")
+            opciones_duplas_form = [f"{d}: {duplas_nombres.get(d, '')}" for d in [f"Dupla {i}" for i in range(1, 8)]]
+            prof_elegido_form = st.selectbox("Asignar Dupla", opciones_duplas_form)
+            # Se guarda el ID estable de la dupla (ej. "Dupla 3"), no el nombre de los integrantes,
+            # para que renombrar integrantes más adelante no desvincule este caso de su dupla.
+            prof = prof_elegido_form.split(":")[0].strip()
 
-    st.sidebar.divider()
-    st.sidebar.header("2. Carga Masiva (Matriz Maestra)")
-    archivo_excel = st.sidebar.file_uploader("Subir Matriz de Carga", type=["xlsx"], key="carga_masiva")
-    modo_reinicio = st.sidebar.checkbox("🚨 MODO REINICIO: Borrar base actual y cargar desde cero")
-    
-    if archivo_excel:
-        try:
-            df_excel = pd.read_excel(archivo_excel)
-            df_excel.columns = [str(c).strip() for c in df_excel.columns]
-            cols_norm = {c.lower(): c for c in df_excel.columns}
-            
-            c_caso = cols_norm.get("caso")
-            c_prof = cols_norm.get("profesional")
-            c_rit = cols_norm.get("rit")
-            c_fecha = cols_norm.get("fecha ingreso") or cols_norm.get("fecha de ingreso")
-            
-            c_codnino = cols_norm.get("codnino")
-            c_nacimiento = cols_norm.get("fechanacimiento")
-            c_nacionalidad = cols_norm.get("nacionalidad")
-            c_calidad = cols_norm.get("calidadjuridica")
-            c_direccion = cols_norm.get("direccionnino")
-            c_comuna = cols_norm.get("comuna")
-            c_tribunal = cols_norm.get("tribunal")
-            c_convive = cols_norm.get("conquienvive")
-            
-            if c_caso and c_prof and c_fecha:
-                if st.sidebar.button("🚀 Sincronizar Matriz Completa"):
-                    barra_progreso = st.sidebar.progress(0)
-                    if modo_reinicio:
-                        supabase.table("entregas").delete().neq("id", 0).execute()
-                        supabase.table("casos").delete().neq("id", 0).execute()
-                    
-                    total_filas = len(df_excel)
-                    for i, (_, row) in enumerate(df_excel.iterrows()):
-                        nombre_c = str(row[c_caso]).strip()
-                        f_ing_dt = pd.to_datetime(row[c_fecha], errors='coerce', dayfirst=True)
-                        f_ing_val = f_ing_dt.strftime('%Y-%m-%d') if pd.notnull(f_ing_dt) else None
-                        val_prof = str(row[c_prof]).strip()
-
-                        if f_ing_val:
-                            meta_vals = {
-                                "Caso": nombre_c, "RIT": str(row[c_rit]).strip() if c_rit else "S/R",
-                                "Profesional": val_prof, "Fecha Ingreso": f_ing_val,
-                                "codnino": str(row[c_codnino]).strip() if c_codnino else "S/I",
-                                "fechanacimiento": str(row[c_nacimiento]).strip() if c_nacimiento else "S/I",
-                                "Nacionalidad": str(row[c_nacionalidad]).strip() if c_nacionalidad else "S/I",
-                                "CalidadJuridica": str(row[c_calidad]).strip() if c_calidad else "S/I",
-                                "DireccionNino": str(row[c_direccion]).strip() if c_direccion else "S/I",
-                                "Comuna": str(row[c_comuna]).strip() if c_comuna else "S/I",
-                                "Tribunal": str(row[c_tribunal]).strip() if c_tribunal else "S/I",
-                                "ConQuienVive": str(row[c_convive]).strip() if c_convive else "S/I"
-                            }
-                            supabase.table("casos").upsert(meta_vals, on_conflict="Caso").execute()
-                            
-                            for inf in NOMBRES_TABLA:
-                                col_inf = cols_norm.get(inf.lower())
-                                if col_inf and pd.notnull(row[col_inf]):
-                                    f_env_dt = pd.to_datetime(row[col_inf], errors='coerce', dayfirst=True)
-                                    if pd.notnull(f_env_dt):
-                                        envio = {"Caso": nombre_c, "Informe": inf, "Fecha Envio Real": f_env_dt.strftime('%Y-%m-%d')}
-                                        supabase.table("entregas").upsert(envio, on_conflict="Caso, Informe").execute()
-                        barra_progreso.progress((i + 1) / total_filas)
-                    st.sidebar.success("✅ ¡Sincronización Exitosa!")
+            f_ing = st.date_input("Fecha Ingreso", datetime.now())
+            if st.form_submit_button("Guardar Caso") and n_caso:
+                try:
+                    nuevo = {
+                        "Caso": str(n_caso).strip(), 
+                        "RIT": str(n_rit).strip(), 
+                        "codnino": str(n_codnino).strip(),
+                        "fechanacimiento": str(n_fecnac),
+                        "Profesional": prof, 
+                        "Fecha Ingreso": str(f_ing)
+                    }
+                    supabase.table("casos").insert(nuevo).execute()
+                    st.success(f"✅ Caso {n_caso} guardado en la nube")
                     st.rerun()
-        except Exception as e: 
-            st.sidebar.error(f"Error: {e}")
+                except Exception as e:
+                    st.error(f"❌ Error al guardar: {e}")
+
+    with st.sidebar.expander("2. Carga Masiva (Matriz Maestra)", expanded=False):
+        archivo_excel = st.file_uploader("Subir Matriz de Carga", type=["xlsx"], key="carga_masiva")
+        modo_reinicio = st.checkbox("🚨 MODO REINICIO: Borrar base actual y cargar desde cero")
+
+        if archivo_excel:
+            try:
+                df_excel = pd.read_excel(archivo_excel)
+                df_excel.columns = [str(c).strip() for c in df_excel.columns]
+                cols_norm = {c.lower(): c for c in df_excel.columns}
+
+                c_caso = cols_norm.get("caso")
+                c_prof = cols_norm.get("profesional")
+                c_rit = cols_norm.get("rit")
+                c_fecha = cols_norm.get("fecha ingreso") or cols_norm.get("fecha de ingreso")
+
+                c_codnino = cols_norm.get("codnino")
+                c_nacimiento = cols_norm.get("fechanacimiento")
+                c_nacionalidad = cols_norm.get("nacionalidad")
+                c_calidad = cols_norm.get("calidadjuridica")
+                c_direccion = cols_norm.get("direccionnino")
+                c_comuna = cols_norm.get("comuna")
+                c_tribunal = cols_norm.get("tribunal")
+                c_convive = cols_norm.get("conquienvive")
+
+                if c_caso and c_prof and c_fecha:
+                    if st.button("🚀 Sincronizar Matriz Completa"):
+                        barra_progreso = st.progress(0)
+                        if modo_reinicio:
+                            supabase.table("entregas").delete().neq("id", 0).execute()
+                            supabase.table("casos").delete().neq("id", 0).execute()
+
+                        total_filas = len(df_excel)
+                        for i, (_, row) in enumerate(df_excel.iterrows()):
+                            nombre_c = str(row[c_caso]).strip()
+                            f_ing_dt = pd.to_datetime(row[c_fecha], errors='coerce', dayfirst=True)
+                            f_ing_val = f_ing_dt.strftime('%Y-%m-%d') if pd.notnull(f_ing_dt) else None
+                            val_prof = str(row[c_prof]).strip()
+
+                            if f_ing_val:
+                                meta_vals = {
+                                    "Caso": nombre_c, "RIT": str(row[c_rit]).strip() if c_rit else "S/R",
+                                    "Profesional": val_prof, "Fecha Ingreso": f_ing_val,
+                                    "codnino": str(row[c_codnino]).strip() if c_codnino else "S/I",
+                                    "fechanacimiento": str(row[c_nacimiento]).strip() if c_nacimiento else "S/I",
+                                    "Nacionalidad": str(row[c_nacionalidad]).strip() if c_nacionalidad else "S/I",
+                                    "CalidadJuridica": str(row[c_calidad]).strip() if c_calidad else "S/I",
+                                    "DireccionNino": str(row[c_direccion]).strip() if c_direccion else "S/I",
+                                    "Comuna": str(row[c_comuna]).strip() if c_comuna else "S/I",
+                                    "Tribunal": str(row[c_tribunal]).strip() if c_tribunal else "S/I",
+                                    "ConQuienVive": str(row[c_convive]).strip() if c_convive else "S/I"
+                                }
+                                supabase.table("casos").upsert(meta_vals, on_conflict="Caso").execute()
+
+                                for inf in NOMBRES_TABLA:
+                                    col_inf = cols_norm.get(inf.lower())
+                                    if col_inf and pd.notnull(row[col_inf]):
+                                        f_env_dt = pd.to_datetime(row[col_inf], errors='coerce', dayfirst=True)
+                                        if pd.notnull(f_env_dt):
+                                            envio = {"Caso": nombre_c, "Informe": inf, "Fecha Envio Real": f_env_dt.strftime('%Y-%m-%d')}
+                                            supabase.table("entregas").upsert(envio, on_conflict="Caso, Informe").execute()
+                            barra_progreso.progress((i + 1) / total_filas)
+                        st.success("✅ ¡Sincronización Exitosa!")
+                        st.rerun()
+            except Exception as e:
+                st.error(f"Error: {e}")
 
 df_c = cargar_casos()
 df_e = cargar_entregas()
@@ -478,13 +482,16 @@ df_e = cargar_entregas()
 def obtener_dupla_id_para_caso(prof_en_caso):
     if not isinstance(prof_en_caso, str): return prof_en_caso
     p_clean = prof_en_caso.strip().lower()
+    # 1) Coincidencia directa por ID de dupla (ej. "dupla 3") o por nombre de integrantes actual.
     for d_id, integrantes in duplas_nombres.items():
         if p_clean == integrantes.strip().lower() or p_clean == d_id.lower():
             return d_id
+    # 2) Coincidencia por primer nombre (para datos antiguos cargados antes de este cambio).
     for d_id, integrantes in duplas_nombres.items():
         primer_nombre = integrantes.split("-")[0].split()[0].lower()
         if primer_nombre in p_clean:
             return d_id
+    # 3) Coincidencia contra el mapeo inicial por defecto (por si el nombre nunca fue editado).
     for d_id, init_val in DUPLAS_MAPA_INICIAL.items():
         if p_clean == init_val.strip().lower():
             return d_id
@@ -499,36 +506,38 @@ if st.session_state.user_role != "admin":
     df_c_sidebar = df_c_sidebar[df_c_sidebar['Dupla_ID_Asignada'] == mi_dupla_id]
 
 if st.session_state.user_role == "admin":
-    st.sidebar.divider()
-    st.sidebar.header("3. Registrar Envío")
-    if not df_c_sidebar.empty:
-        with st.sidebar.form("registrar_envio", clear_on_submit=True):
-            caso_envio = st.selectbox("Selecciona el Caso", sorted(df_c_sidebar['Caso'].unique()))
-            informe_envio = st.selectbox("¿Qué informe envió?", NOMBRES_TABLA)
-            f_envio = st.date_input("Fecha Real de Envío", datetime.now())
-            if st.form_submit_button("Registrar Envío"):
-                try:
-                    nuevo_e = {"Caso": caso_envio, "Informe": informe_envio, "Fecha Envio Real": str(f_envio)}
-                    supabase.table("entregas").upsert(nuevo_e, on_conflict="Caso, Informe").execute()
-                    st.sidebar.success("✅ Envío registrado en la nube")
-                    st.rerun()
-                except Exception as e:
-                    st.sidebar.error(f"❌ Error: {e}")
+    with st.sidebar.expander("3. Registrar Envío", expanded=False):
+        if not df_c_sidebar.empty:
+            with st.form("registrar_envio", clear_on_submit=True):
+                caso_envio = st.selectbox("Selecciona el Caso", sorted(df_c_sidebar['Caso'].unique()))
+                informe_envio = st.selectbox("¿Qué informe envió?", NOMBRES_TABLA)
+                f_envio = st.date_input("Fecha Real de Envío", datetime.now())
+                if st.form_submit_button("Registrar Envío"):
+                    try:
+                        nuevo_e = {"Caso": caso_envio, "Informe": informe_envio, "Fecha Envio Real": str(f_envio)}
+                        supabase.table("entregas").upsert(nuevo_e, on_conflict="Caso, Informe").execute()
+                        st.success("✅ Envío registrado en la nube")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error: {e}")
+        else:
+            st.caption("No hay casos disponibles para registrar envíos.")
 
 if st.session_state.user_role == "admin":
-    st.sidebar.divider()
-    st.sidebar.header("4. 🗑️ Eliminar Caso")
-    if not df_c_sidebar.empty:
-        lista_borrar = sorted(df_c_sidebar['Caso'].unique())
-        caso_a_borrar = st.sidebar.selectbox("Caso a eliminar", ["---"] + lista_borrar)
-        if st.sidebar.button("Eliminar permanentemente"):
-            if caso_a_borrar != "---":
-                try:
-                    supabase.table("casos").delete().eq("Caso", caso_a_borrar).execute()
-                    st.sidebar.warning(f"Caso '{caso_a_borrar}' eliminado de la nube.")
-                    st.rerun()
-                except Exception as e:
-                    st.sidebar.error(f"Error al eliminar: {e}")
+    with st.sidebar.expander("4. 🗑️ Eliminar Caso", expanded=False):
+        if not df_c_sidebar.empty:
+            lista_borrar = sorted(df_c_sidebar['Caso'].unique())
+            caso_a_borrar = st.selectbox("Caso a eliminar", ["---"] + lista_borrar)
+            if st.button("Eliminar permanentemente"):
+                if caso_a_borrar != "---":
+                    try:
+                        supabase.table("casos").delete().eq("Caso", caso_a_borrar).execute()
+                        st.warning(f"Caso '{caso_a_borrar}' eliminado de la nube.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al eliminar: {e}")
+        else:
+            st.caption("No hay casos disponibles para eliminar.")
 
     st.sidebar.divider()
     st.sidebar.header("5. 🛠️ Gestión y Corrección")
@@ -552,7 +561,9 @@ if st.session_state.user_role == "admin":
 
                     nuevo_prof_elegido = st.selectbox("Asignar Dupla", opciones_edit, index=idx_default)
                     dupla_id_elegida = nuevo_prof_elegido.split(":")[0].strip()
-                    nuevo_prof = duplas_nombres.get(dupla_id_elegida, nuevo_prof_elegido.split(": ")[1])
+                    # Se guarda el ID estable de la dupla, no el nombre resuelto de integrantes,
+                    # para que renombrar integrantes no desvincule este caso de su dupla.
+                    nuevo_prof = dupla_id_elegida
                     
                     nueva_fecha_ing = st.date_input("Fecha Ingreso", datos_actuales['Fecha Ingreso'])
                     
@@ -590,33 +601,32 @@ if st.session_state.user_role == "admin":
                         st.rerun()
                     except Exception as e: st.error(f"Error: {e}")
 
-    st.sidebar.divider()
-    st.sidebar.header("6. ⏳ Cargar Lista de Espera")
-    archivo_espera = st.sidebar.file_uploader("Subir Excel Lista Espera", type=["xlsx"])
-    if archivo_espera:
-        try:
-            df_espera_raw = pd.read_excel(archivo_espera)
-            cols_interes = ["Nombres", "Apellido_Paterno", "Apellido_Materno", "FechaNacimiento", "Rut", "FechaIngresoLE", "Tribunal", "RIT", "FechaOrden", "ComunaNiño_a"]
-            cols_presentes = [c for c in cols_interes if c in df_espera_raw.columns]
-            cols_faltantes = [c for c in cols_interes if c not in df_espera_raw.columns]
-            cols_ignoradas = [c for c in df_espera_raw.columns if c not in cols_interes]
-            df_espera_filtrado = df_espera_raw[cols_presentes].copy()
-            if cols_faltantes:
-                st.sidebar.warning(f"⚠️ Columnas no encontradas en el Excel (se omiten): {', '.join(cols_faltantes)}")
-            if cols_ignoradas:
-                st.sidebar.info(f"ℹ️ Columnas del Excel no usadas por el sistema: {', '.join(cols_ignoradas)}")
-            if st.sidebar.button("🔄 Actualizar Lista de Espera"):
-                supabase.table("lista_espera").delete().neq("id", 0).execute()
-                registros = df_espera_filtrado.to_dict(orient="records")
-                for r in registros:
-                    for k, v in r.items():
-                        if "Fecha" in k and pd.notnull(v): r[k] = str(pd.to_datetime(v).date())
-                        elif pd.isnull(v): r[k] = None
-                supabase.table("lista_espera").insert(registros).execute()
-                st.sidebar.success("Lista de espera actualizada en la nube.")
-                st.rerun()
-        except Exception as e: 
-            st.sidebar.error(f"Error: {e}")
+    with st.sidebar.expander("6. ⏳ Cargar Lista de Espera", expanded=False):
+        archivo_espera = st.file_uploader("Subir Excel Lista Espera", type=["xlsx"])
+        if archivo_espera:
+            try:
+                df_espera_raw = pd.read_excel(archivo_espera)
+                cols_interes = ["Nombres", "Apellido_Paterno", "Apellido_Materno", "FechaNacimiento", "Rut", "FechaIngresoLE", "Tribunal", "RIT", "FechaOrden", "ComunaNiño_a"]
+                cols_presentes = [c for c in cols_interes if c in df_espera_raw.columns]
+                cols_faltantes = [c for c in cols_interes if c not in df_espera_raw.columns]
+                cols_ignoradas = [c for c in df_espera_raw.columns if c not in cols_interes]
+                df_espera_filtrado = df_espera_raw[cols_presentes].copy()
+                if cols_faltantes:
+                    st.warning(f"⚠️ Columnas no encontradas en el Excel (se omiten): {', '.join(cols_faltantes)}")
+                if cols_ignoradas:
+                    st.info(f"ℹ️ Columnas del Excel no usadas por el sistema: {', '.join(cols_ignoradas)}")
+                if st.button("🔄 Actualizar Lista de Espera"):
+                    supabase.table("lista_espera").delete().neq("id", 0).execute()
+                    registros = df_espera_filtrado.to_dict(orient="records")
+                    for r in registros:
+                        for k, v in r.items():
+                            if "Fecha" in k and pd.notnull(v): r[k] = str(pd.to_datetime(v).date())
+                            elif pd.isnull(v): r[k] = None
+                    supabase.table("lista_espera").insert(registros).execute()
+                    st.success("Lista de espera actualizada en la nube.")
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Error: {e}")
 
 st.sidebar.divider()
 if st.sidebar.button("🚪 Cerrar Sesión"):
@@ -1140,7 +1150,8 @@ if not df_c.empty:
                         opciones_duplas_le = [f"{d}: {duplas_nombres.get(d, '')}" for d in [f"Dupla {i}" for i in range(1, 8)]]
                         prof_elegido_le = st.selectbox("Asignar Dupla", opciones_duplas_le, key="prof_le_a_caso")
                         dupla_id_le = prof_elegido_le.split(":")[0].strip()
-                        prof_nuevo = duplas_nombres.get(dupla_id_le, prof_elegido_le.split(": ")[1])
+                        # Se guarda el ID estable de la dupla, no el nombre resuelto de integrantes.
+                        prof_nuevo = dupla_id_le
 
                         f_ing_nuevo = st.date_input("Fecha Ingreso", datetime.now(), key="fing_le_a_caso")
 
