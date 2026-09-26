@@ -95,7 +95,48 @@ TELETRABAJO = {
     "Vie": ["D2", "D5", "D7", "D1"]
 }
 
-# --- 2. LÓGICA DE PERSISTENCIA (Supabase) ---
+# --- 2. VALIDACIÓN DE IMPORTACIÓN Y PERSISTENCIA (Supabase) ---
+def validar_e_importar_df(new_df_raw):
+    """Valida y normaliza un dataframe recién leído desde Excel/CSV antes de aceptarlo
+    como reemplazo de la planificación de un mes. Lanza ValueError con un mensaje
+    claro si algo no calza, para que quien llama NUNCA sobrescriba los datos actuales
+    (ni los guarde en Supabase) con un archivo mal formado."""
+    columnas_requeridas = ["Semana", "Fecha", "T_Diario", "Bloque", "Ubicación", "Dupla"]
+    faltantes = [c for c in columnas_requeridas if c not in new_df_raw.columns]
+    if faltantes:
+        raise ValueError(f"faltan las columnas: {', '.join(faltantes)}")
+
+    df = new_df_raw[columnas_requeridas].copy()
+
+    try:
+        df["Semana"] = df["Semana"].astype(int)
+    except Exception:
+        raise ValueError("la columna 'Semana' debe contener solo números")
+
+    df["Fecha"] = df["Fecha"].fillna("").astype(str)
+    if (df["Fecha"] == "").any():
+        raise ValueError("hay filas con 'Fecha' vacía")
+
+    df["Bloque"] = df["Bloque"].fillna("").astype(str)
+    bloques_desconocidos = sorted(set(df["Bloque"].unique()) - set(BLOQUES))
+    if bloques_desconocidos:
+        raise ValueError(f"bloques no reconocidos: {', '.join(bloques_desconocidos)}")
+
+    df["Ubicación"] = df["Ubicación"].fillna("").astype(str)
+    salas_desconocidas = sorted(set(df["Ubicación"].unique()) - set(SALAS))
+    if salas_desconocidas:
+        raise ValueError(f"salas no reconocidas: {', '.join(salas_desconocidas)}")
+
+    df["T_Diario"] = df["T_Diario"].fillna("T Disp").astype(str)
+    df["Dupla"] = df["Dupla"].fillna("---").astype(str)
+
+    # Cada combinación Fecha+Bloque+Ubicación debe ser única (una sola asignación por celda)
+    duplicados = df.duplicated(subset=["Fecha", "Bloque", "Ubicación"]).sum()
+    if duplicados:
+        raise ValueError(f"hay {duplicados} fila(s) duplicada(s) para la misma Fecha/Bloque/Ubicación")
+
+    return df
+
 def guardar_datos(supabase):
     """Guarda cada mes como un registro JSON en la tabla 'planificacion_salas'."""
     for id_m, m_data in st.session_state.meses_data.items():
@@ -619,19 +660,22 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
 
             st.markdown("---")
             st.subheader("📂 Importar Planificación")
+            st.caption("El archivo debe tener las columnas: Semana, Fecha, T_Diario, Bloque, Ubicación, Dupla (usa 'Descargar Plantilla para Importar' como base).")
             uploaded_file = st.file_uploader("Subir Excel/CSV para este mes:", type=["xlsx", "csv"], key="salas_upload")
             if uploaded_file:
                 try:
                     if uploaded_file.name.endswith("xlsx"):
-                        new_df = pd.read_excel(uploaded_file)
+                        new_df_raw = pd.read_excel(uploaded_file)
                     else:
-                        new_df = pd.read_csv(uploaded_file)
+                        new_df_raw = pd.read_csv(uploaded_file)
+                    new_df = validar_e_importar_df(new_df_raw)
+                except Exception as e:
+                    st.error(f"❌ No se pudo importar el archivo ({e}). La planificación actual de este mes NO fue modificada.")
+                else:
                     st.session_state.meses_data[mes_sel]['df'] = new_df
                     guardar_datos(supabase)
-                    st.success("✅ Datos cargados correctamente.")
+                    st.success("✅ Datos importados correctamente.")
                     st.rerun()
-                except Exception as e:
-                    st.error(f"Error al cargar: {e}")
 
             st.markdown("---")
             if not m_data['fijado']:
