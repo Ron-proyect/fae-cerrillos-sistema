@@ -337,14 +337,16 @@ def generar_calendario_mensual(año, mes, dict_bloqueos):
             # (MAX_HORAS_SALA_DIA). Entre el resto, se prioriza a quien YA trabajó en
             # el bloque inmediatamente anterior de hoy (para que, si a una dupla le
             # toca más de un bloque individual en el día, queden seguidos y no
-            # salteados); luego, entre empatados, por uso_hoy para obligar a rotar y no
-            # concentrar solo dos duplas, y por último a quien NO tuvo este mismo turno
-            # la semana pasada
+            # salteados); luego se prioriza a quien tuvo el turno CONTRARIO al de esta
+            # semana la semana pasada (para que la mañana/tarde rote de semana en
+            # semana y no le toque siempre el mismo tramo); por último, entre
+            # empatados, por uso_hoy para obligar a rotar y no concentrar solo dos
+            # duplas
             candidatos_bloque = [c for c in candidatos_bloque if horas_trabajadas_hoy[c] < MAX_HORAS_SALA_DIA]
             candidatos_bloque.sort(key=lambda x: (
                 0 if x in duplas_bloque_anterior else 1,
-                uso_hoy[x],
                 1 if turno_previo[x] == turno_actual else 0,
+                uso_hoy[x],
                 uso_mensual[x],
                 random.random(),
             ))
