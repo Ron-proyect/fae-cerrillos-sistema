@@ -175,34 +175,43 @@ if not st.session_state.logged_in:
     login_screen()
     st.stop()
 
-def cargar_duplas_config():
+def cargar_config_duplas_completo():
+    """Carga integrantes + email de cada dupla desde Supabase. El email se usa para las
+    alertas automáticas de plazos (ver enviar_alertas.py)."""
+    base = {d: {"integrantes": DUPLAS_MAPA_INICIAL.get(d, ""), "email": ""} for d in [f"Dupla {i}" for i in range(1, 8)]}
     try:
         response = supabase.table("config_duplas").select("*").execute()
         df = pd.DataFrame(response.data)
         if df.empty:
-            return DUPLAS_MAPA_INICIAL.copy()
-        resultado = DUPLAS_MAPA_INICIAL.copy()
+            return base
         for _, row in df.iterrows():
             d_key = row.get('dupla')
-            d_val = row.get('integrantes')
-            if d_key and d_val:
-                resultado[d_key] = d_val
-        return resultado
+            if d_key in base:
+                if row.get('integrantes'):
+                    base[d_key]['integrantes'] = row.get('integrantes')
+                if row.get('email'):
+                    base[d_key]['email'] = row.get('email')
+        return base
     except Exception as e:
         st.sidebar.warning(f"⚠️ No se pudo leer 'config_duplas' desde Supabase, usando valores por defecto. Detalle: {e}")
-        return DUPLAS_MAPA_INICIAL.copy()
+        return base
 
-def guardar_duplas_config(mapping_dict):
+def guardar_config_duplas_completo(config_dict):
     try:
-        for dupla, integrantes in mapping_dict.items():
-            supabase.table("config_duplas").upsert({"dupla": dupla, "integrantes": integrantes}, on_conflict="dupla").execute()
+        for dupla, datos in config_dict.items():
+            supabase.table("config_duplas").upsert(
+                {"dupla": dupla, "integrantes": datos["integrantes"], "email": datos.get("email", "")},
+                on_conflict="dupla"
+            ).execute()
         return True
     except Exception as e:
         st.sidebar.error(f"❌ Error al guardar duplas: {e}")
         return False
 
 # Carga dinámica y fresca de las duplas en cada ejecución
-duplas_nombres = cargar_duplas_config()
+config_duplas_completo = cargar_config_duplas_completo()
+duplas_nombres = {d: info["integrantes"] for d, info in config_duplas_completo.items()}
+duplas_emails = {d: info["email"] for d, info in config_duplas_completo.items()}
 
 def limpiar_y_asegurar_unicos(columnas):
     nombres_limpios = []
@@ -381,21 +390,10 @@ def generar_pdf_cronograma(caso_nombre, f_ingreso, df_hitos):
         pdf.ln()
     return bytes(pdf.output())
 
-# --- CONFIGURACIÓN DE ASIGNACIÓN DE PROFESIONALES A DUPLAS EN BARRA LATERAL (ADMIN) ---
 if st.session_state.user_role == "admin":
-    with st.sidebar.expander("⚙️ Asignar Profesionales a Duplas", expanded=False):
-        nuevo_mapping = {}
-        with st.form("form_config_duplas"):
-            for dupla_id in [f"Dupla {i}" for i in range(1, 8)]:
-                actual = duplas_nombres.get(dupla_id, DUPLAS_MAPA_INICIAL.get(dupla_id, ""))
-                nuevo_mapping[dupla_id] = st.text_input(f"Integrantes {dupla_id}", value=actual)
-            if st.form_submit_button("Guardar Cambios de Duplas"):
-                if guardar_duplas_config(nuevo_mapping):
-                    st.success("¡Asignación actualizada!")
-                    st.rerun()
+    st.sidebar.markdown("## 🗂️ Menú de Gestión")
 
-if st.session_state.user_role == "admin":
-    with st.sidebar.expander("1. Registrar Nuevo Caso", expanded=False):
+    with st.sidebar.expander("1. 📝 Registrar Nuevo Caso", expanded=False):
         with st.form("nuevo_caso", clear_on_submit=True):
             n_caso = st.text_input("Nombre del Caso")
             n_rit = st.text_input("Causa RIT")
@@ -425,7 +423,7 @@ if st.session_state.user_role == "admin":
                 except Exception as e:
                     st.error(f"❌ Error al guardar: {e}")
 
-    with st.sidebar.expander("2. Carga Masiva (Matriz Maestra)", expanded=False):
+    with st.sidebar.expander("2. 🚀 Carga Masiva (Matriz Maestra)", expanded=False):
         st.download_button(
             "📄 Descargar Planilla Base (Plantilla)",
             generar_plantilla_base(),
@@ -530,7 +528,7 @@ if st.session_state.user_role != "admin":
     df_c_sidebar = df_c_sidebar[df_c_sidebar['Dupla_ID_Asignada'] == mi_dupla_id]
 
 if st.session_state.user_role == "admin":
-    with st.sidebar.expander("3. Registrar Envío", expanded=False):
+    with st.sidebar.expander("3. 📨 Registrar Envío", expanded=False):
         if not df_c_sidebar.empty:
             with st.form("registrar_envio", clear_on_submit=True):
                 caso_envio = st.selectbox("Selecciona el Caso", sorted(df_c_sidebar['Caso'].unique()))
@@ -563,69 +561,91 @@ if st.session_state.user_role == "admin":
         else:
             st.caption("No hay casos disponibles para eliminar.")
 
-    st.sidebar.divider()
-    st.sidebar.header("5. 🛠️ Gestión y Corrección")
-    
-    with st.sidebar.expander("📝 Editar Información del Caso"):
-        if not df_c_sidebar.empty:
-            caso_a_editar = st.selectbox("Selecciona caso para editar", ["---"] + sorted(df_c_sidebar['Caso'].unique()))
-            if caso_a_editar != "---":
-                datos_actuales = df_c_sidebar[df_c_sidebar['Caso'] == caso_a_editar].iloc[0]
-                with st.form("form_unificado_editar"):
-                    nuevo_nombre_c = st.text_input("Nombre del Caso", caso_a_editar)
-                    nuevo_rit = st.text_input("Causa RIT", datos_actuales['RIT'])
-                    
-                    prof_actual_val = datos_actuales['Profesional']
-                    opciones_edit = [f"{d}: {duplas_nombres.get(d, '')}" for d in [f"Dupla {i}" for i in range(1, 8)]]
-                    idx_default = 0
-                    for idx_op, op_val in enumerate(opciones_edit):
-                        if obtener_dupla_id_para_caso(prof_actual_val) in op_val:
-                            idx_default = idx_op
-                            break
+    with st.sidebar.expander("5. 🛠️ Gestión y Corrección", expanded=False):
+        accion_gestion = st.radio(
+            "¿Qué quieres hacer?",
+            ["📝 Editar Información del Caso", "📅 Corregir/Eliminar Fecha de Informe"],
+            key="accion_gestion_correccion"
+        )
+        st.divider()
 
-                    nuevo_prof_elegido = st.selectbox("Asignar Dupla", opciones_edit, index=idx_default)
-                    dupla_id_elegida = nuevo_prof_elegido.split(":")[0].strip()
-                    # Se guarda el ID estable de la dupla, no el nombre resuelto de integrantes,
-                    # para que renombrar integrantes no desvincule este caso de su dupla.
-                    nuevo_prof = dupla_id_elegida
-                    
-                    nueva_fecha_ing = st.date_input("Fecha Ingreso", datos_actuales['Fecha Ingreso'])
-                    
-                    if st.form_submit_button("Guardar Cambios"):
+        if accion_gestion == "📝 Editar Información del Caso":
+            if not df_c_sidebar.empty:
+                caso_a_editar = st.selectbox("Selecciona caso para editar", ["---"] + sorted(df_c_sidebar['Caso'].unique()))
+                if caso_a_editar != "---":
+                    datos_actuales = df_c_sidebar[df_c_sidebar['Caso'] == caso_a_editar].iloc[0]
+                    with st.form("form_unificado_editar"):
+                        nuevo_nombre_c = st.text_input("Nombre del Caso", caso_a_editar)
+                        nuevo_rit = st.text_input("Causa RIT", datos_actuales['RIT'])
+
+                        prof_actual_val = datos_actuales['Profesional']
+                        opciones_edit = [f"{d}: {duplas_nombres.get(d, '')}" for d in [f"Dupla {i}" for i in range(1, 8)]]
+                        idx_default = 0
+                        for idx_op, op_val in enumerate(opciones_edit):
+                            if obtener_dupla_id_para_caso(prof_actual_val) in op_val:
+                                idx_default = idx_op
+                                break
+
+                        nuevo_prof_elegido = st.selectbox("Asignar Dupla", opciones_edit, index=idx_default)
+                        dupla_id_elegida = nuevo_prof_elegido.split(":")[0].strip()
+                        # Se guarda el ID estable de la dupla, no el nombre resuelto de integrantes,
+                        # para que renombrar integrantes no desvincule este caso de su dupla.
+                        nuevo_prof = dupla_id_elegida
+
+                        nueva_fecha_ing = st.date_input("Fecha Ingreso", datos_actuales['Fecha Ingreso'])
+
+                        if st.form_submit_button("Guardar Cambios"):
+                            try:
+                                datos_nuevos = {"Caso": nuevo_nombre_c.strip(), "RIT": nuevo_rit, "Profesional": nuevo_prof, "Fecha Ingreso": str(nueva_fecha_ing)}
+                                supabase.table("casos").update(datos_nuevos).eq("Caso", caso_a_editar).execute()
+                                st.success("Información actualizada en la nube.")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error: {e}")
+        else:
+            df_e_corr = cargar_entregas()
+            if not df_e_corr.empty:
+                caso_f_corr = st.selectbox("Selecciona Caso", sorted(df_e_corr['Caso'].unique()), key="corr_f_c")
+                informes_enviados = df_e_corr[df_e_corr['Caso'] == caso_f_corr]['Informe'].unique()
+                inf_a_corr = st.selectbox("Informe a gestionar", informes_enviados)
+                fecha_actual = df_e_corr[(df_e_corr['Caso'] == caso_f_corr) & (df_e_corr['Informe'] == inf_a_corr)]['Fecha Envio Real'].iloc[0]
+                nueva_f_corr = st.date_input("Nueva Fecha Real", fecha_actual)
+
+                c_upd, c_del = st.columns(2)
+                with c_upd:
+                    if st.button("Actualizar Fecha"):
                         try:
-                            datos_nuevos = {"Caso": nuevo_nombre_c.strip(), "RIT": nuevo_rit, "Profesional": nuevo_prof, "Fecha Ingreso": str(nueva_fecha_ing)}
-                            supabase.table("casos").update(datos_nuevos).eq("Caso", caso_a_editar).execute()
-                            st.success("Información actualizada en la nube.")
+                            supabase.table("entregas").update({"Fecha Envio Real": str(nueva_f_corr)}).match({"Caso": caso_f_corr, "Informe": inf_a_corr}).execute()
+                            st.success("Fecha actualizada.")
                             st.rerun()
-                        except Exception as e:
-                            st.error(f"Error: {e}")
+                        except Exception as e: st.error(f"Error: {e}")
+                with c_del:
+                    if st.button("🗑️ Eliminar Informe"):
+                        try:
+                            supabase.table("entregas").delete().match({"Caso": caso_f_corr, "Informe": inf_a_corr}).execute()
+                            st.warning("Registro eliminado.")
+                            st.rerun()
+                        except Exception as e: st.error(f"Error: {e}")
 
-    with st.sidebar.expander("📅 Corregir/Eliminar Fecha de Informe"):
-        df_e_corr = cargar_entregas()
-        if not df_e_corr.empty:
-            caso_f_corr = st.selectbox("Selecciona Caso", sorted(df_e_corr['Caso'].unique()), key="corr_f_c")
-            informes_enviados = df_e_corr[df_e_corr['Caso'] == caso_f_corr]['Informe'].unique()
-            inf_a_corr = st.selectbox("Informe a gestionar", informes_enviados)
-            fecha_actual = df_e_corr[(df_e_corr['Caso'] == caso_f_corr) & (df_e_corr['Informe'] == inf_a_corr)]['Fecha Envio Real'].iloc[0]
-            nueva_f_corr = st.date_input("Nueva Fecha Real", fecha_actual)
-            
-            c_upd, c_del = st.columns(2)
-            with c_upd:
-                if st.button("Actualizar Fecha"):
-                    try:
-                        supabase.table("entregas").update({"Fecha Envio Real": str(nueva_f_corr)}).match({"Caso": caso_f_corr, "Informe": inf_a_corr}).execute()
-                        st.success("Fecha actualizada.")
-                        st.rerun()
-                    except Exception as e: st.error(f"Error: {e}")
-            with c_del:
-                if st.button("🗑️ Eliminar Informe"):
-                    try:
-                        supabase.table("entregas").delete().match({"Caso": caso_f_corr, "Informe": inf_a_corr}).execute()
-                        st.warning("Registro eliminado.")
-                        st.rerun()
-                    except Exception as e: st.error(f"Error: {e}")
+    with st.sidebar.expander("6. ⚙️ Configurar Duplas", expanded=False):
+        st.caption("El correo de cada dupla se usa para las alertas automáticas de plazos (80 días).")
+        nuevo_mapping = {}
+        with st.form("form_config_duplas"):
+            for dupla_id in [f"Dupla {i}" for i in range(1, 8)]:
+                actual_integrantes = duplas_nombres.get(dupla_id, DUPLAS_MAPA_INICIAL.get(dupla_id, ""))
+                actual_email = duplas_emails.get(dupla_id, "")
+                col_int, col_mail = st.columns(2)
+                with col_int:
+                    integrantes_nuevo = st.text_input(f"Integrantes {dupla_id}", value=actual_integrantes)
+                with col_mail:
+                    email_nuevo = st.text_input(f"Correo {dupla_id}", value=actual_email, placeholder="correo@fundaciondem.cl")
+                nuevo_mapping[dupla_id] = {"integrantes": integrantes_nuevo, "email": email_nuevo.strip()}
+            if st.form_submit_button("Guardar Cambios de Duplas"):
+                if guardar_config_duplas_completo(nuevo_mapping):
+                    st.success("¡Asignación actualizada!")
+                    st.rerun()
 
-    with st.sidebar.expander("6. ⏳ Cargar Lista de Espera", expanded=False):
+    with st.sidebar.expander("7. ⏳ Cargar Lista de Espera", expanded=False):
         archivo_espera = st.file_uploader("Subir Excel Lista Espera", type=["xlsx"])
         if archivo_espera:
             try:
