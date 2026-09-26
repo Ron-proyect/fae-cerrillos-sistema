@@ -67,6 +67,14 @@ def obtener_iniciales(id_dupla):
         return "-".join([p[0].upper() for p in partes])
     return id_dupla
 
+def formatear_opcion_dupla(id_dupla):
+    """Para usar como format_func en selects/multiselects: si es una dupla (D1, D2...)
+    muestra el id acompañado de sus iniciales (ej. 'D1 (B-I)'); si es otra opción
+    ('---', 'L', 'T Disp', 'SIN TERRENO') la deja tal cual."""
+    if id_dupla in NOMBRES_DUPLAS:
+        return f"{id_dupla} ({obtener_iniciales(id_dupla)})"
+    return id_dupla
+
 COLORES_DUPLAS = {
     "D1": "#1E88E5", "D2": "#2E7D32", "D3": "#8E24AA", "D4": "#D84315",
     "D5": "#C2185B", "D6": "#00838F", "D7": "#E64A19", "---": "#CCCCCC",
@@ -583,7 +591,7 @@ def render_gestion_salas(supabase, es_admin=True):
             st.session_state.meses_data[mes_sel]['fijado'] = fijado_check
             guardar_datos(supabase)
             st.rerun()
-        foco_duplas = st.multiselect("🔎 Modo Enfoque:", options=DUPLAS, default=[], key="salas_foco")
+        foco_duplas = st.multiselect("🔎 Modo Enfoque:", options=DUPLAS, default=[], format_func=formatear_opcion_dupla, key="salas_foco")
 
         if es_admin:
             st.markdown("---")
@@ -633,7 +641,7 @@ def render_gestion_salas(supabase, es_admin=True):
                 edit_fecha = st.selectbox("Día:", df_edit["Fecha"].unique(), key="salas_edit_fecha")
                 edit_bloque = st.selectbox("Bloque:", BLOQUES, key="salas_edit_bloque")
                 edit_sala = st.selectbox("Sala:", SALAS, key="salas_edit_sala")
-                nueva_asig = st.selectbox("Dupla:", DUPLAS + ["---", "L"], key="salas_edit_dupla")
+                nueva_asig = st.selectbox("Dupla:", DUPLAS + ["---", "L"], format_func=formatear_opcion_dupla, key="salas_edit_dupla")
                 if st.button("💾 Aplicar Cambio Manual", key="salas_edit_aplicar"):
                     idx = df_edit[(df_edit["Fecha"] == edit_fecha) & (df_edit["Bloque"] == edit_bloque) & (df_edit["Ubicación"] == edit_sala)].index
                     if not idx.empty:
@@ -644,7 +652,7 @@ def render_gestion_salas(supabase, es_admin=True):
                 st.markdown("---")
                 st.subheader("🚜 Editor de Terrenos")
                 edit_t_fecha = st.selectbox("Día Terreno:", df_edit["Fecha"].unique(), key="salas_edit_t_fecha")
-                nuevo_t = st.selectbox("Dupla Terreno:", DUPLAS + ["T Disp", "SIN TERRENO"], key="salas_edit_t_dupla")
+                nuevo_t = st.selectbox("Dupla Terreno:", DUPLAS + ["T Disp", "SIN TERRENO"], format_func=formatear_opcion_dupla, key="salas_edit_t_dupla")
                 if st.button("💾 Cambiar Terreno", key="salas_edit_t_aplicar"):
                     st.session_state.meses_data[mes_sel]['df'].loc[st.session_state.meses_data[mes_sel]['df']["Fecha"] == edit_t_fecha, "T_Diario"] = nuevo_t
                     guardar_datos(supabase)
