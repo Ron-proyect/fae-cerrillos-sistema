@@ -13,6 +13,7 @@ import streamlit.components.v1 as components
 from docxtpl import DocxTemplate
 import zipfile
 import extra_streamlit_components as stx
+from gestion_salas import render_gestion_salas
 
 # ==============================================================================
 # --- CONEXIÓN A SUPABASE (VERSIÓN SEGURA CON st.secrets) ---
@@ -686,9 +687,9 @@ if not df_c.empty:
     st.divider()
 
     if st.session_state.user_role == "admin":
-        tab_ind, tab_global, tab_espera, tab_sis, tab_word = st.tabs(["👤 Vista por Duplas", "🌎 Panel Global", "⏳ Lista de Espera", "📊 Analítica SIS", "📝 Automatizador Word"])
+        tab_ind, tab_global, tab_espera, tab_sis, tab_word, tab_salas = st.tabs(["👤 Vista por Duplas", "🌎 Panel Global", "⏳ Lista de Espera", "📊 Analítica SIS", "📝 Automatizador Word", "🗓️ Gestión de Salas"])
     else:
-        tab_ind, tab_word = st.tabs(["👤 Mi Vista Dupla", "📝 Automatizador Word"])
+        tab_ind, tab_word, tab_salas = st.tabs(["👤 Mi Vista Dupla", "📝 Automatizador Word", "🗓️ Gestión de Salas"])
 
     with tab_ind:
         st.subheader("🔍 Consulta por Duplas")
@@ -1299,6 +1300,9 @@ if not df_c.empty:
                     
                     st.success("✅ ¡Documentos generados!")
                     st.download_button("📥 Descargar ZIP", zip_buffer.getvalue(), "documentos_generados.zip", "application/zip")
+
+    with tab_salas:
+        render_gestion_salas(supabase, es_admin=(st.session_state.user_role == "admin"))
 
 else:
     st.info("Sube tu Excel para comenzar.")
