@@ -156,6 +156,28 @@ def guardar_datos(supabase):
         except Exception as e:
             st.error(f"❌ No se pudo guardar la planificación de '{id_m}' en Supabase: {e}")
 
+def guardar_mes(supabase, mes_id):
+    """Guarda en Supabase SOLO el mes indicado (una llamada de red), en vez de
+    reenviar los 6 meses completos como hace guardar_datos(). Se usa después de
+    cualquier cambio puntual (bloqueo, edición manual, importación, etc.) para
+    que la app responda rápido."""
+    m_data = st.session_state.meses_data[mes_id]
+    registro = {
+        'df': m_data['df'].to_dict(orient='records'),
+        'rt': m_data['rt'],
+        'bloqueos': m_data['bloqueos'],
+        'fijado': m_data['fijado'],
+        'año': m_data['año'],
+        'mes': m_data['mes']
+    }
+    try:
+        supabase.table("planificacion_salas").upsert(
+            {"mes_id": mes_id, "datos": registro},
+            on_conflict="mes_id"
+        ).execute()
+    except Exception as e:
+        st.error(f"❌ No se pudo guardar la planificación de '{mes_id}' en Supabase: {e}")
+
 def cargar_datos(supabase):
     """Lee todos los meses guardados en 'planificacion_salas'. Devuelve None si la
     tabla está vacía o si hay un error de conexión (en ese caso se generan meses nuevos)."""
@@ -504,6 +526,7 @@ def mostrar_grafico_comparativo(df_total, foco_duplas=[]):
         st.altair_chart(final_chart, use_container_width=False)
 
 # --- 7. EXPORTACIÓN EXCEL ---
+@st.cache_data(show_spinner=False)
 def exportar_excel_visual(df_total, dict_bloqueos):
     output = BytesIO()
     workbook = pd.ExcelWriter(output, engine='xlsxwriter').book
@@ -562,6 +585,7 @@ def exportar_excel_visual(df_total, dict_bloqueos):
     workbook.close()
     return output.getvalue()
 
+@st.cache_data(show_spinner=False)
 def exportar_icalendar(df_total, año, mes):
     if not ICAL_DISPONIBLE: return None
     cal = Calendar(); cal.add('prodid', '-//Gestión de Salas//Fundación DEM//ES'); cal.add('version', '2.0')
@@ -647,7 +671,7 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
             fijado_check = st.checkbox("🔒 Fijar Mes (Bloquear cambios)", value=m_data['fijado'], key="salas_fijado")
             if fijado_check != m_data['fijado']:
                 st.session_state.meses_data[mes_sel]['fijado'] = fijado_check
-                guardar_datos(supabase)
+                guardar_mes(supabase, mes_sel)
                 st.rerun()
             foco_duplas = st.multiselect("🔎 Modo Enfoque:", options=DUPLAS, default=[], format_func=formatear_opcion_dupla, key="salas_foco")
 
@@ -666,7 +690,7 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
                     st.error(f"❌ No se pudo importar el archivo ({e}). La planificación actual de este mes NO fue modificada.")
                 else:
                     st.session_state.meses_data[mes_sel]['df'] = new_df
-                    guardar_datos(supabase)
+                    guardar_mes(supabase, mes_sel)
                     st.success("✅ Datos importados correctamente.")
                     st.rerun()
 
@@ -685,14 +709,14 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
                         st.session_state.meses_data[mes_sel]['bloqueos'][f_blq] = {'bloques': BLOQUES[idx_i : idx_f + 1], 'motivo': m_blq}
                         df, rt = generar_calendario_mensual(m_data['año'], m_data['mes'], st.session_state.meses_data[mes_sel]['bloqueos'])
                         st.session_state.meses_data[mes_sel]['df'] = df
-                        guardar_datos(supabase)
+                        guardar_mes(supabase, mes_sel)
                         st.rerun()
                 if st.button("🔄 Re-generar Planificación", key="salas_regenerar"):
                     st.session_state.meses_data[mes_sel]['bloqueos'] = {}
                     df, rt = generar_calendario_mensual(m_data['año'], m_data['mes'], {})
                     st.session_state.meses_data[mes_sel]['df'] = df
                     st.session_state.meses_data[mes_sel]['rt'] = rt
-                    guardar_datos(supabase)
+                    guardar_mes(supabase, mes_sel)
                     st.rerun()
 
                 st.markdown("---")
@@ -706,7 +730,7 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
                     idx = df_edit[(df_edit["Fecha"] == edit_fecha) & (df_edit["Bloque"] == edit_bloque) & (df_edit["Ubicación"] == edit_sala)].index
                     if not idx.empty:
                         st.session_state.meses_data[mes_sel]['df'].at[idx[0], "Dupla"] = nueva_asig
-                        guardar_datos(supabase)
+                        guardar_mes(supabase, mes_sel)
                         st.rerun()
 
                 st.markdown("---")
@@ -715,7 +739,7 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
                 nuevo_t = st.selectbox("Dupla Terreno:", DUPLAS + ["T Disp", "SIN TERRENO"], format_func=formatear_opcion_dupla, key="salas_edit_t_dupla")
                 if st.button("💾 Cambiar Terreno", key="salas_edit_t_aplicar"):
                     st.session_state.meses_data[mes_sel]['df'].loc[st.session_state.meses_data[mes_sel]['df']["Fecha"] == edit_t_fecha, "T_Diario"] = nuevo_t
-                    guardar_datos(supabase)
+                    guardar_mes(supabase, mes_sel)
                     st.rerun()
 
             st.markdown("---")
