@@ -293,9 +293,89 @@ def cargar_lista_espera():
         if not df.empty:
             df['FechaNacimiento'] = pd.to_datetime(df['FechaNacimiento'], errors='coerce').dt.date
             df['FechaIngresoLE'] = pd.to_datetime(df['FechaIngresoLE'], errors='coerce').dt.date
+            if 'CodNino' in df.columns:
+                df['CodNino'] = pd.to_numeric(df['CodNino'], errors='coerce').astype('Int64')
         return df
     except:
         return pd.DataFrame()
+
+# Columnas que se toman del reporte SIS "Reporte_ListaEspera" (el resto se ignora)
+COLS_LE = ["CodNino", "Nombres", "Apellido_Paterno", "Apellido_Materno", "FechaNacimiento",
+           "Rut", "FechaIngresoLE", "Tribunal", "RIT", "FechaOrden", "ComunaNiño_a"]
+
+def _norm_col(c):
+    """Normaliza un encabezado (minúsculas, sin tildes ni ñ) para encontrarlo aunque cambie un poco."""
+    t = unicodedata.normalize('NFD', str(c).strip().lower())
+    return ''.join(ch for ch in t if unicodedata.category(ch) != 'Mn')
+
+def preparar_lista_espera(df_raw):
+    """Toma el Excel del reporte SIS y devuelve (registros_listos, columnas_faltantes, n_egresados)."""
+    norm = {_norm_col(c): c for c in df_raw.columns}
+    df = pd.DataFrame(index=df_raw.index)
+    faltantes = []
+    for col in COLS_LE:
+        origen = norm.get(_norm_col(col))
+        if origen is None:
+            faltantes.append(col)
+        else:
+            df[col] = df_raw[origen]
+
+    # Si el niño ya tiene fecha de egreso (distinta de 1900-01-01), ya no está en espera
+    n_egresados = 0
+    c_egreso = norm.get("fechaegresole")
+    if c_egreso:
+        egreso = pd.to_datetime(df_raw[c_egreso], errors="coerce")
+        sigue = egreso.isna() | (egreso.dt.year <= 1900)
+        n_egresados = int((~sigue).sum())
+        df = df[sigue]
+
+    # Nombres: el SIS trae mezcla de MAYÚSCULAS y minúsculas -> se dejan como "Nombre Apellido"
+    for col in ["Nombres", "Apellido_Paterno", "Apellido_Materno"]:
+        if col in df.columns:
+            df[col] = df[col].apply(lambda v: str(v).strip().title() if pd.notnull(v) and str(v).strip() not in ("", "0", "0.0") else None)
+    for col in ["Rut", "RIT", "Tribunal", "ComunaNiño_a"]:
+        if col in df.columns:
+            df[col] = df[col].apply(lambda v: str(v).strip() if pd.notnull(v) and str(v).strip() else None)
+
+    # Fechas: se quita la hora y las fechas "1900-01-01" (vacías en el SIS) quedan en blanco
+    for col in ["FechaNacimiento", "FechaIngresoLE", "FechaOrden"]:
+        if col in df.columns:
+            f = pd.to_datetime(df[col], errors="coerce")
+            f = f.where(f.dt.year > 1900)
+            df[col] = f.dt.date
+    if "CodNino" in df.columns:
+        df["CodNino"] = pd.to_numeric(df["CodNino"], errors="coerce")
+
+    registros = []
+    for _, fila in df.iterrows():
+        r = {}
+        for k, v in fila.items():
+            if pd.isnull(v): r[k] = None
+            elif k == "CodNino": r[k] = int(v)
+            elif hasattr(v, "isoformat"): r[k] = v.isoformat()[:10]
+            else: r[k] = v
+        registros.append(r)
+    return registros, faltantes, n_egresados
+
+def planificar_lista_espera(registros):
+    """Compara el Excel con lo que ya hay en Supabase. Devuelve (nuevos, a_actualizar, salen)."""
+    existentes = supabase.table("lista_espera").select("*").execute().data or []
+    por_cod = {str(e["CodNino"]): e for e in existentes if e.get("CodNino") is not None}
+    por_rut = {str(e["Rut"]).strip().upper(): e for e in existentes if e.get("Rut")}
+    nuevos, a_actualizar, vistos = [], [], set()
+    for r in registros:
+        e = None
+        if r.get("CodNino") is not None:
+            e = por_cod.get(str(r["CodNino"]))
+        if e is None and r.get("Rut"):
+            e = por_rut.get(str(r["Rut"]).strip().upper())
+        if e is not None and e["id"] not in vistos:
+            vistos.add(e["id"])
+            a_actualizar.append((e["id"], r))
+        else:
+            nuevos.append(r)
+    salen = [e for e in existentes if e["id"] not in vistos]
+    return nuevos, a_actualizar, salen
 
 def convertir_a_excel_completo(df_casos_actuales, df_entregas_total):
     """Genera el Excel de la Matriz Completa en EXACTAMENTE el mismo formato de columnas
@@ -647,29 +727,36 @@ if st.session_state.user_role == "admin":
                     st.rerun()
 
     with st.sidebar.expander("7. ⏳ Cargar Lista de Espera", expanded=False):
+        st.caption("Sube el reporte 'Reporte_ListaEspera' descargado del SIS. Los checks de 'Acciones realizadas' de los niños que siguen en la lista se conservan.")
         archivo_espera = st.file_uploader("Subir Excel Lista Espera", type=["xlsx"])
         if archivo_espera:
             try:
                 df_espera_raw = pd.read_excel(archivo_espera)
-                cols_interes = ["Nombres", "Apellido_Paterno", "Apellido_Materno", "FechaNacimiento", "Rut", "FechaIngresoLE", "Tribunal", "RIT", "FechaOrden", "ComunaNiño_a"]
-                cols_presentes = [c for c in cols_interes if c in df_espera_raw.columns]
-                cols_faltantes = [c for c in cols_interes if c not in df_espera_raw.columns]
-                cols_ignoradas = [c for c in df_espera_raw.columns if c not in cols_interes]
-                df_espera_filtrado = df_espera_raw[cols_presentes].copy()
-                if cols_faltantes:
-                    st.warning(f"⚠️ Columnas no encontradas en el Excel (se omiten): {', '.join(cols_faltantes)}")
-                if cols_ignoradas:
-                    st.info(f"ℹ️ Columnas del Excel no usadas por el sistema: {', '.join(cols_ignoradas)}")
-                if st.button("🔄 Actualizar Lista de Espera"):
-                    supabase.table("lista_espera").delete().neq("id", 0).execute()
-                    registros = df_espera_filtrado.to_dict(orient="records")
-                    for r in registros:
-                        for k, v in r.items():
-                            if "Fecha" in k and pd.notnull(v): r[k] = str(pd.to_datetime(v).date())
-                            elif pd.isnull(v): r[k] = None
-                    supabase.table("lista_espera").insert(registros).execute()
-                    st.success("Lista de espera actualizada en la nube.")
-                    st.rerun()
+                registros_le, cols_faltantes_le, n_egresados_le = preparar_lista_espera(df_espera_raw)
+
+                if cols_faltantes_le:
+                    st.warning(f"⚠️ Columnas no encontradas en el Excel (se omiten): {', '.join(cols_faltantes_le)}")
+                if n_egresados_le:
+                    st.info(f"ℹ️ {n_egresados_le} fila(s) con fecha de egreso se ignoraron (ya no están en espera).")
+
+                if not registros_le:
+                    st.error("El Excel no tiene filas válidas para cargar.")
+                else:
+                    nuevos_le, actualizar_le, salen_le = planificar_lista_espera(registros_le)
+                    st.markdown(f"**Resumen:** 🆕 {len(nuevos_le)} nuevos · 🔄 {len(actualizar_le)} se actualizan · 🚪 {len(salen_le)} salen de la lista")
+                    if salen_le:
+                        nombres_salen = [f"{s.get('Nombres', '')} {s.get('Apellido_Paterno', '')}".strip() for s in salen_le]
+                        st.caption("Salen (ya no aparecen en el Excel): " + ", ".join(nombres_salen))
+
+                    if st.button("🔄 Actualizar Lista de Espera"):
+                        if nuevos_le:
+                            supabase.table("lista_espera").insert(nuevos_le).execute()
+                        for id_reg, datos in actualizar_le:
+                            supabase.table("lista_espera").update(datos).eq("id", id_reg).execute()
+                        for s in salen_le:
+                            supabase.table("lista_espera").delete().eq("id", s["id"]).execute()
+                        st.success("Lista de espera actualizada en la nube.")
+                        st.rerun()
             except Exception as e:
                 st.error(f"Error: {e}")
 
@@ -1125,6 +1212,9 @@ if not df_c.empty:
                     idx_nac = cols_le.index('FechaNacimiento')
                     cols_le.insert(idx_nac + 1, 'Edad')
                 df_le = df_le[cols_le]
+                # N° correlativo (siempre de 1 a N). El id real sigue existiendo pero se oculta más abajo.
+                df_le = df_le.sort_values('id').reset_index(drop=True) if 'id' in df_le.columns else df_le.reset_index(drop=True)
+                df_le.insert(0, "N°", range(1, len(df_le) + 1))
 
                 cols_acciones = ["visita_domiciliaria", "entrevista_inicial", "cumple_perfil", "no_cumple_perfil", "ficha_ingreso_completada"]
                 etiquetas_acciones = {
@@ -1139,6 +1229,7 @@ if not df_c.empty:
                 st.info(f"Actualmente hay **{len(df_le)}** niños/as en lista de espera.")
 
                 col_config_acciones = {c: st.column_config.CheckboxColumn(etiquetas_acciones[c]) for c in cols_acciones}
+                col_config_acciones["id"] = None  # oculta el id en pantalla
                 cols_no_editables = [c for c in df_le.columns if c not in cols_acciones and c != 'id']
 
                 df_le_editado = st.data_editor(
@@ -1185,11 +1276,13 @@ if not df_c.empty:
                     rit_sugerido = str(fila_le.get('RIT', '')) if pd.notnull(fila_le.get('RIT')) else ""
                     fecnac_le = fila_le.get('FechaNacimiento')
                     fecnac_sugerida = fecnac_le if pd.notnull(fecnac_le) else datetime.now()
+                    cod_le = fila_le.get('CodNino')
+                    codnino_sugerido = str(int(cod_le)) if cod_le is not None and pd.notnull(cod_le) else ""
 
                     with st.form("form_le_a_caso"):
                         caso_nombre_nuevo = st.text_input("Nombre del Caso", nombre_sugerido)
                         rit_nuevo = st.text_input("Causa RIT", rit_sugerido)
-                        codnino_nuevo = st.text_input("Cod. Niño")
+                        codnino_nuevo = st.text_input("Cod. Niño", codnino_sugerido)
                         fecnac_nuevo = st.date_input("Fecha de Nacimiento", fecnac_sugerida, min_value=datetime(1990, 1, 1))
                         
                         opciones_duplas_le = [f"{d}: {duplas_nombres.get(d, '')}" for d in [f"Dupla {i}" for i in range(1, 8)]]
@@ -1214,7 +1307,7 @@ if not df_c.empty:
                                 supabase.table("casos").insert(nuevo_caso).execute()
 
                                 if 'id' in fila_le.index and pd.notnull(fila_le.get('id')):
-                                    supabase.table("lista_espera").delete().eq("id", fila_le['id']).execute()
+                                    supabase.table("lista_espera").delete().eq("id", int(fila_le['id'])).execute()
                                 else:
                                     supabase.table("lista_espera").delete().match({
                                         "Nombres": fila_le.get('Nombres'), "Apellido_Paterno": fila_le.get('Apellido_Paterno'),
