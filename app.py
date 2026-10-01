@@ -1264,7 +1264,7 @@ if not df_c.empty:
                             st.rerun()
             else: st.success("No hay casos en lista de espera.")
 
-            if st.session_state.user_role == "admin":
+            if st.session_state.user_role in ("admin", "espera"):
                 st.divider()
                 st.subheader("➕ Registrar Caso desde Lista de Espera")
                 df_le_reg = cargar_lista_espera()
