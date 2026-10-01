@@ -3,6 +3,7 @@ from supabase import create_client, Client
 import pandas as pd
 from datetime import datetime, timedelta
 import os
+import time
 import plotly.express as px
 import plotly.graph_objects as go
 import re
@@ -87,8 +88,13 @@ COLUMNAS_MATRIZ_MAESTRA = [
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
+# Bandera que se activa al cerrar sesión: evita que la cookie (que el navegador puede tardar
+# en borrar) vuelva a iniciar sesión automáticamente.
+if 'cerrando_sesion' not in st.session_state:
+    st.session_state.cerrando_sesion = False
+
 saved_user = cookie_manager.get('fae_login_cookie')
-if saved_user and not st.session_state.logged_in:
+if saved_user and not st.session_state.logged_in and not st.session_state.cerrando_sesion:
     if saved_user in CREDENTIALS:
         st.session_state.logged_in = True
         st.session_state.user_role = CREDENTIALS[saved_user]["role"]
@@ -143,6 +149,13 @@ st.markdown(f"""
         border-right: 1px solid {COLOR_VERDE_IRIDEM};
         border-bottom: 1px solid {COLOR_VERDE_IRIDEM};
     }}
+    .case-info-espera {{
+        background-color: #fff6e0 !important;
+        border-left: 8px solid #f39c12 !important;
+        border-top: 1px solid #f39c12;
+        border-right: 1px solid #f39c12;
+        border-bottom: 1px solid #f39c12;
+    }}
     .gray-container div[data-testid="stButton"] > button {{
         background-color: {COLOR_GRIS_PIZARRA} !important;
         color: white !important;
@@ -165,10 +178,12 @@ def login_screen():
             password = st.text_input("Contraseña", type="password")
             if st.button("Ingresar", use_container_width=True):
                 if user in CREDENTIALS and CREDENTIALS[user]["pass"] == password:
+                    st.session_state.cerrando_sesion = False
                     st.session_state.logged_in = True
                     st.session_state.user_role = CREDENTIALS[user]["role"]
                     st.session_state.user_name = CREDENTIALS[user]["name"]
-                    cookie_manager.set('fae_login_cookie', user, expires_at=datetime.now() + timedelta(days=1))
+                    cookie_manager.set('fae_login_cookie', user, expires_at=datetime.now() + timedelta(days=1), key="set_cookie_login")
+                    time.sleep(0.5)  # da tiempo a que el navegador guarde la cookie antes de recargar
                     st.rerun()
                 else:
                     st.error("Usuario o contraseña incorrectos")
@@ -765,8 +780,22 @@ if st.session_state.user_role in ("admin", "espera"):
 
 st.sidebar.divider()
 if st.sidebar.button("🚪 Cerrar Sesión"):
-    cookie_manager.delete('fae_login_cookie')
+    # 1) Se activa la bandera ANTES de tocar la cookie: así, aunque el navegador tarde en borrarla,
+    #    el auto-login de arriba queda bloqueado y se muestra la pantalla de acceso.
+    st.session_state.cerrando_sesion = True
     st.session_state.logged_in = False
+    st.session_state.user_role = None
+    st.session_state.user_name = None
+    st.session_state.caso_seleccionado = None
+    # 2) Se borra la cookie del navegador (si falla el borrado, se sobrescribe con una ya vencida).
+    try:
+        cookie_manager.delete('fae_login_cookie', key="delete_cookie_logout")
+    except Exception:
+        try:
+            cookie_manager.set('fae_login_cookie', '', expires_at=datetime.now() - timedelta(days=1), key="expire_cookie_logout")
+        except Exception:
+            pass
+    time.sleep(1)  # da tiempo a que el navegador procese el borrado antes de recargar
     st.rerun()
 
 if not df_c.empty:
@@ -1120,21 +1149,80 @@ if not df_c.empty:
                 fig_global_pie.update_layout(height=350, showlegend=True, legend=dict(orientation="h", y=-0.1, xanchor="center", x=0.5), paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO)
                 st.plotly_chart(fig_global_pie, use_container_width=True)
 
+            # ------------------------------------------------------------------
+            # BUSCADOR RÁPIDO: busca en casos activos Y en la lista de espera
+            # ------------------------------------------------------------------
             st.divider()
             st.subheader("🔍 Buscador Rápido de Casos")
-            df_maestro_search = pd.DataFrame(resumen_global_maestro)
+            st.caption("Busca entre los casos activos y también entre los niños/as en lista de espera (se marcan con ⏳).")
+
+            def _txt_busq(v):
+                if v is None:
+                    return ""
+                try:
+                    if pd.isnull(v):
+                        return ""
+                except (TypeError, ValueError):
+                    pass
+                return str(v).strip()
+
             criterio = st.radio("Criterio de búsqueda:", ["Nombre del Caso", "Causa RIT", "Cod. Niño"], horizontal=True)
-            col_filtro = 'Caso' if criterio == "Nombre del Caso" else ('RIT' if criterio == "Causa RIT" else 'codnino')
-            seleccion = st.selectbox("Escribe o selecciona:", ["---"] + sorted(df_maestro_search[col_filtro].astype(str).unique()))
-            
+
+            # Casos activos
+            campo_caso = {"Nombre del Caso": "Caso", "Causa RIT": "RIT", "Cod. Niño": "codnino"}[criterio]
+            opciones_busqueda = {}
+            for r_caso in resumen_global_maestro:
+                valor = _txt_busq(r_caso.get(campo_caso))
+                if valor:
+                    opciones_busqueda.setdefault(valor, ("caso", r_caso))
+
+            # Lista de espera
+            df_le_busq = cargar_lista_espera()
+            if not df_le_busq.empty:
+                for _, r_le in df_le_busq.iterrows():
+                    nombre_le = " ".join(
+                        _txt_busq(r_le.get(k)) for k in ["Nombres", "Apellido_Paterno", "Apellido_Materno"] if _txt_busq(r_le.get(k))
+                    )
+                    if criterio == "Nombre del Caso":
+                        valor_le = nombre_le
+                    elif criterio == "Causa RIT":
+                        valor_le = _txt_busq(r_le.get("RIT"))
+                    else:
+                        valor_le = _txt_busq(r_le.get("CodNino"))
+                    if valor_le:
+                        opciones_busqueda.setdefault(f"{valor_le}  ⏳ [Lista de espera]", ("espera", r_le))
+
+            seleccion = st.selectbox("Escribe o selecciona:", ["---"] + sorted(opciones_busqueda.keys()))
+
             if seleccion != "---":
-                info_c = df_maestro_search[df_maestro_search[col_filtro].astype(str) == seleccion].iloc[0]
-                edad_txt = f"{info_c['Edad']} años" if info_c['Edad'] != "S/I" else "S/I"
-                st.markdown(f"""
-                    <div class="case-info-banner">
-                        <b>🆔 Cod. Niño:</b> {info_c['codnino']} | <b>👤 Caso:</b> {info_c['Caso']} | <b>🎂 Edad:</b> {edad_txt} | <b>📄 RIT:</b> {info_c['RIT']} | <b>🤝 Dupla:</b> {info_c['Dupla_Label']} | <b>⏱️ Antigüedad:</b> {info_c['Meses']} meses
-                    </div>
-                """, unsafe_allow_html=True)
+                tipo_sel, info_sel = opciones_busqueda[seleccion]
+                if tipo_sel == "caso":
+                    edad_txt = f"{info_sel['Edad']} años" if info_sel['Edad'] != "S/I" else "S/I"
+                    st.markdown(f"""
+                        <div class="case-info-banner">
+                            <b>✅ Estado:</b> Caso activo en el programa | <b>🆔 Cod. Niño:</b> {info_sel['codnino']} | <b>👤 Caso:</b> {info_sel['Caso']} | <b>🎂 Edad:</b> {edad_txt} | <b>📄 RIT:</b> {info_sel['RIT']} | <b>🤝 Dupla:</b> {info_sel['Dupla_Label']} | <b>⏱️ Antigüedad:</b> {info_sel['Meses']} meses
+                        </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    nombre_le_sel = " ".join(
+                        _txt_busq(info_sel.get(k)) for k in ["Nombres", "Apellido_Paterno", "Apellido_Materno"] if _txt_busq(info_sel.get(k))
+                    )
+                    f_nac_le = info_sel.get("FechaNacimiento")
+                    if f_nac_le is not None and pd.notnull(f_nac_le):
+                        edad_le_txt = f"{hoy.year - f_nac_le.year - ((hoy.month, hoy.day) < (f_nac_le.month, f_nac_le.day))} años"
+                    else:
+                        edad_le_txt = "S/I"
+                    f_ing_le = info_sel.get("FechaIngresoLE")
+                    if f_ing_le is not None and pd.notnull(f_ing_le):
+                        ing_le_txt = f_ing_le.strftime('%d-%m-%Y')
+                        dias_le_txt = f"{(hoy - f_ing_le).days} días"
+                    else:
+                        ing_le_txt, dias_le_txt = "S/I", "S/I"
+                    st.markdown(f"""
+                        <div class="case-info-banner case-info-espera">
+                            <b>⏳ Estado:</b> EN LISTA DE ESPERA (aún no es caso activo) | <b>🆔 Cod. Niño:</b> {_txt_busq(info_sel.get('CodNino')) or 'S/I'} | <b>👤 Nombre:</b> {nombre_le_sel} | <b>🎂 Edad:</b> {edad_le_txt} | <b>📄 RIT:</b> {_txt_busq(info_sel.get('RIT')) or 'S/R'} | <b>⚖️ Tribunal:</b> {_txt_busq(info_sel.get('Tribunal')) or 'S/I'} | <b>📅 Ingreso a espera:</b> {ing_le_txt} | <b>⌛ Tiempo en espera:</b> {dias_le_txt}
+                        </div>
+                    """, unsafe_allow_html=True)
 
             st.divider()
             st.subheader("📋 Lista Maestra")
@@ -1163,6 +1251,17 @@ if not df_c.empty:
 
     if st.session_state.user_role in ("admin", "espera"):
         with tab_espera:
+            # --- Totales del programa (casos activos vs. lista de espera) ---
+            total_casos_programa = len(df_c)
+            _df_le_conteo = cargar_lista_espera()
+            total_en_espera = len(_df_le_conteo)
+
+            col_t1, col_t2, col_t3 = st.columns(3)
+            col_t1.metric("📁 Total de casos en el programa", total_casos_programa)
+            col_t2.metric("⏳ Niños/as en lista de espera", total_en_espera)
+            col_t3.metric("👥 Total general (programa + espera)", total_casos_programa + total_en_espera)
+            st.divider()
+
             st.subheader("👥 Casos Activos por Dupla")
             st.caption("Referencia para decidir a quién asignar el próximo ingreso.")
             
@@ -1194,6 +1293,36 @@ if not df_c.empty:
             col_graf_espera, col_vacia_espera = st.columns([1, 1])
             with col_graf_espera:
                 st.plotly_chart(fig_conteo_dupla, use_container_width=True)
+
+            # --- Casos asignados (detalle por dupla) ---
+            st.divider()
+            st.subheader("📂 Casos Asignados por Dupla")
+            st.caption("Detalle de los casos que tiene cada dupla actualmente.")
+
+            opciones_filtro_asig = ["Todas las duplas"] + [f"{d} ({duplas_nombres.get(d, '')})" for d in [f"Dupla {i}" for i in range(1, 8)]]
+            sel_asig = st.selectbox("Filtrar por dupla:", opciones_filtro_asig, key="filtro_asignados_espera")
+
+            df_asig = df_c.copy()
+            if not df_asig.empty:
+                if sel_asig != "Todas las duplas":
+                    d_sel_asig = sel_asig.split(" (")[0]
+                    df_asig = df_asig[df_asig['Dupla_ID_Asignada'] == d_sel_asig]
+
+                df_asig['Dupla'] = df_asig['Dupla_ID_Asignada'].apply(
+                    lambda d: f"{d} ({duplas_nombres.get(d, '')})" if d in duplas_nombres else str(d)
+                )
+                df_asig['Antigüedad (meses)'] = df_asig['Fecha Ingreso'].apply(
+                    lambda f: (hoy.year - f.year) * 12 + (hoy.month - f.month) - (1 if hoy.day < f.day else 0)
+                )
+                df_asig['Fecha Ingreso'] = df_asig['Fecha Ingreso'].apply(lambda f: f.strftime('%d-%m-%Y'))
+                df_asig = df_asig.sort_values(['Dupla', 'Caso']).reset_index(drop=True)
+                df_asig.insert(0, "N°", range(1, len(df_asig) + 1))
+
+                columnas_asig = [c for c in ["N°", "Caso", "RIT", "codnino", "Dupla", "Fecha Ingreso", "Antigüedad (meses)"] if c in df_asig.columns]
+                st.info(f"Mostrando **{len(df_asig)}** caso(s) asignado(s).")
+                st.dataframe(df_asig[columnas_asig], use_container_width=True, hide_index=True)
+            else:
+                st.caption("Aún no hay casos asignados.")
 
             st.divider()
             st.subheader("⏳ Casos en Lista de Espera")
@@ -1232,7 +1361,7 @@ if not df_c.empty:
                     if col_acc not in df_le.columns: df_le[col_acc] = False
                     else: df_le[col_acc] = df_le[col_acc].fillna(False)
 
-                st.info(f"Actualmente hay **{len(df_le)}** niños/as en lista de espera.")
+                st.info(f"Actualmente hay **{len(df_le)}** niños/as en lista de espera y **{total_casos_programa}** casos activos en el programa.")
 
                 col_config_acciones = {c: st.column_config.CheckboxColumn(etiquetas_acciones[c]) for c in cols_acciones}
                 col_config_acciones["id"] = None  # oculta el id en pantalla
