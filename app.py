@@ -49,7 +49,8 @@ CREDENTIALS = {
     "laura.alan": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 4"},
     "maida.valeria": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 5"},
     "marcelo.maria": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 6"},
-    "solange.francisco": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 7"}
+    "solange.francisco": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 7"},
+    "lista.espera": {"pass": "espera.cerrillos", "role": "espera", "name": "Lista de Espera"}
 }
 
 DUPLAS_MAPA_INICIAL = {
@@ -726,7 +727,9 @@ if st.session_state.user_role == "admin":
                     st.success("¡Asignación actualizada!")
                     st.rerun()
 
-    with st.sidebar.expander("7. ⏳ Cargar Lista de Espera", expanded=False):
+if st.session_state.user_role in ("admin", "espera"):
+    etiqueta_cargar_le = "7. ⏳ Cargar Lista de Espera" if st.session_state.user_role == "admin" else "⏳ Cargar Lista de Espera"
+    with st.sidebar.expander(etiqueta_cargar_le, expanded=False):
         st.caption("Sube el reporte 'Reporte_ListaEspera' descargado del SIS. Los checks de 'Acciones realizadas' de los niños que siguen en la lista se conservan.")
         archivo_espera = st.file_uploader("Subir Excel Lista Espera", type=["xlsx"])
         if archivo_espera:
@@ -775,247 +778,250 @@ if not df_c.empty:
 
     if st.session_state.user_role == "admin":
         tab_ind, tab_global, tab_espera, tab_sis, tab_word, tab_salas = st.tabs(["👤 Vista por Duplas", "🌎 Panel Global", "⏳ Lista de Espera", "📊 Analítica SIS", "📝 Automatizador Word", "🗓️ Gestión de Salas"])
+    elif st.session_state.user_role == "espera":
+        tab_espera, tab_salas = st.tabs(["⏳ Lista de Espera", "🗓️ Gestión de Salas"])
     else:
         tab_ind, tab_word, tab_salas = st.tabs(["👤 Mi Vista Dupla", "📝 Automatizador Word", "🗓️ Gestión de Salas"])
 
-    with tab_ind:
-        st.subheader("🔍 Consulta por Duplas")
+    if st.session_state.user_role != "espera":
+        with tab_ind:
+            st.subheader("🔍 Consulta por Duplas")
         
-        opciones_duplas_vista = []
-        mapping_opciones = {}
-        for dupla_id in [f"Dupla {i}" for i in range(1, 8)]:
-            integrantes = duplas_nombres.get(dupla_id, "")
-            etiqueta = f"{dupla_id} ({integrantes})"
-            opciones_duplas_vista.append(etiqueta)
-            mapping_opciones[etiqueta] = dupla_id
+            opciones_duplas_vista = []
+            mapping_opciones = {}
+            for dupla_id in [f"Dupla {i}" for i in range(1, 8)]:
+                integrantes = duplas_nombres.get(dupla_id, "")
+                etiqueta = f"{dupla_id} ({integrantes})"
+                opciones_duplas_vista.append(etiqueta)
+                mapping_opciones[etiqueta] = dupla_id
 
-        if st.session_state.user_role == "admin":
-            sel_etiqueta = st.selectbox("Selecciona Dupla:", opciones_duplas_vista)
-            dupla_sel_id = mapping_opciones[sel_etiqueta]
-            prof_sel = duplas_nombres.get(dupla_sel_id, "")
-        else:
-            dupla_sel_id = obtener_dupla_id_para_caso(st.session_state.user_name)
-            prof_sel = duplas_nombres.get(dupla_sel_id, st.session_state.user_name)
-            st.info(f"Visualizando casos de: **{dupla_sel_id} ({prof_sel})**")
-            
-        df_c_filtrado = df_c[df_c['Dupla_ID_Asignada'] == dupla_sel_id]
-
-        if not df_c_filtrado.empty:
-            col_graf1, col_graf2 = st.columns([5, 1])
-            data_grafico_barras = [] 
-            detalles_pendientes_ind = []
-            with col_graf1:
-                st.markdown("#### 📊 Días desde último envío por caso")
-                for c in df_c_filtrado['Caso'].unique():
-                    envios_caso = df_e[df_e['Caso'] == c]
-                    f_ingreso_c = df_c[df_c['Caso'] == c].iloc[0]['Fecha Ingreso']
-                    meses_ant = (hoy.year - f_ingreso_c.year) * 12 + (hoy.month - f_ingreso_c.month)
-                    if hoy.day < f_ingreso_c.day: meses_ant -= 1
-                    
-                    if not envios_caso.empty:
-                        ultima_fecha = pd.to_datetime(envios_caso['Fecha Envio Real']).max().date()
-                        etiqueta = "Días desde último envío"
-                    else:
-                        ultima_fecha = f_ingreso_c
-                        etiqueta = "días desde ingreso (Diagnóstico)"
-                    
-                    vencimiento_3m = (pd.to_datetime(ultima_fecha) + pd.DateOffset(months=3)).date()
-                    
-                    data_grafico_barras.append({
-                        "Caso": c, "Días": (hoy - ultima_fecha).days, "Tipo": etiqueta, 
-                        "Fecha Referencia": ultima_fecha.strftime('%d-%m-%Y'), 
-                        "Meses en Programa": f"{meses_ant} meses",
-                        "Límite 3 meses": vencimiento_3m.strftime('%d-%m-%Y')
-                    })
-
-                    if (hoy - ultima_fecha).days > 90:
-                        entregados_lista = envios_caso['Informe'].tolist()
-                        idx_proximo = max([NOMBRES_TABLA.index(inf) for inf in entregados_lista if inf in NOMBRES_TABLA]) + 1 if entregados_lista else 0
-                        proximo_inf = NOMBRES_TABLA[idx_proximo] if idx_proximo < len(NOMBRES_TABLA) else "-"
-                        detalles_pendientes_ind.append({
-                            "Caso": c,
-                            "RIT": df_c[df_c['Caso'] == c].iloc[0]['RIT'],
-                            "Próximo Informe": proximo_inf,
-                            "Venc. (3m)": vencimiento_3m,
-                            "Meses": meses_ant
-                        })
-                
-                df_grafico = pd.DataFrame(data_grafico_barras)
-                df_grafico['Etiqueta'] = df_grafico['Días'].apply(lambda d: "🆕 0 (Recién ingresado)" if d == 0 else str(d))
-                fig_barras = px.bar(df_grafico, x='Caso', y='Días', color='Tipo', text='Etiqueta', 
-                                   hover_name=None,
-                                   hover_data={
-                                       'Caso': False, 'Tipo': False, 'Días': False, 'Etiqueta': False,
-                                       'Fecha Referencia': True, 'Meses en Programa': True, 'Límite 3 meses': True
-                                   },
-                                   color_discrete_map={"Días desde último envío": COLOR_VERDE_IRIDEM, "días desde ingreso (Diagnóstico)": COLOR_GRIS_IRIDEM})
-                
-                fig_barras.add_hline(y=90, line_color="#ff7f7f", line_width=2)
-                fig_barras.add_hline(y=80, line_color="#f1c40f", line_width=2, line_dash="dash")
-                
-                fig_barras.add_annotation(
-                    x=1.01, y=90, xref="paper", yref="y",
-                    text="Límite (90 días)", showarrow=False, xanchor="left",
-                    font=dict(color="#ff7f7f", size=13)
-                )
-                fig_barras.add_annotation(
-                    x=1.01, y=80, xref="paper", yref="y",
-                    text="Alerta (80 días)", showarrow=False, xanchor="left",
-                    font=dict(color="#d4ac0d", size=13)
-                )
-
-                fig_barras.update_layout(
-                    xaxis_tickangle=-45, height=400, paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO,
-                    margin=dict(t=30, b=40, l=40, r=120),
-                    legend=dict(yanchor="top", y=0.4, xanchor="left", x=1.05)
-                )
-                
-                evento_clic = st.plotly_chart(fig_barras, use_container_width=True, on_select="rerun", key="grafico_barras_ind")
-                if evento_clic and evento_clic.selection and len(evento_clic.selection.points) > 0:
-                    st.session_state.caso_seleccionado = evento_clic.selection.points[0]['x']
-
-            cumple_count = sum(1 for d in data_grafico_barras if d['Días'] <= 90)
-            no_cumple_count = len(data_grafico_barras) - cumple_count
-
-            with col_graf2:
-                st.markdown("#### 🎯 Cumplimiento")
-                fig_torta = go.Figure(data=[go.Pie(
-                    labels=['Al día', 'Fuera de plazo'], values=[cumple_count, no_cumple_count], hole=.5, 
-                    marker_colors=[COLOR_VERDE_IRIDEM, COLOR_GRIS_IRIDEM], textposition='inside', insidetextorientation='horizontal', textinfo='percent', textfont=dict(size=14, color="white")
-                )])
-                fig_torta.update_layout(
-                    margin=dict(t=0, b=0, l=0, r=0), height=300, showlegend=True, 
-                    legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
-                    paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO
-                )
-                st.plotly_chart(fig_torta, use_container_width=True)
-                st.write(f"<div style='margin-top: 10px; text-align: center;'><b>Total: {cumple_count + no_cumple_count} casos</b></div>", unsafe_allow_html=True)
-
-                if no_cumple_count > 0:
-                    st.markdown('<div class="gray-container">', unsafe_allow_html=True)
-                    if st.button(f"⚠️ Ver {no_cumple_count} Informes Pendientes", use_container_width=True, key="btn_pendientes_ind"):
-                        st.session_state.ver_pendientes_ind = not st.session_state.ver_pendientes_ind
-                    st.markdown('</div>', unsafe_allow_html=True)
-
-            if st.session_state.ver_pendientes_ind and no_cumple_count > 0:
-                st.warning(f"⚠️ Casos Fuera de Plazo: {dupla_sel_id} ({prof_sel})")
-                df_pend_ind = pd.DataFrame(detalles_pendientes_ind)
-                df_pend_ind = df_pend_ind.sort_values(by="Venc. (3m)", ascending=True).reset_index(drop=True)
-                df_pend_ind['Venc. (3m)'] = pd.to_datetime(df_pend_ind['Venc. (3m)']).dt.strftime('%d-%m-%Y')
-                st.dataframe(df_pend_ind, use_container_width=True, hide_index=True)
-
-            st.divider()
-            lista_casos_f = sorted(df_c_filtrado['Caso'].unique())
-            if st.session_state.caso_seleccionado not in lista_casos_f:
-                st.session_state.caso_seleccionado = lista_casos_f[0]
-            lista_con_marca = [f"📍 {c}" if c == st.session_state.caso_seleccionado else c for c in lista_casos_f]
-            idx_sel = lista_casos_f.index(st.session_state.caso_seleccionado)
-            caso_sel_raw = st.selectbox("2. Caso seleccionado:", lista_con_marca, index=idx_sel)
-            caso_sel = caso_sel_raw.replace("📍 ", "")
-            st.session_state.caso_seleccionado = caso_sel
-            datos_c = df_c[df_c['Caso'] == caso_sel].iloc[0]
-            f_ingreso = datos_c['Fecha Ingreso']
-            m_ant_tit = (hoy.year - f_ingreso.year) * 12 + (hoy.month - f_ingreso.month)
-            if hoy.day < f_ingreso.day: m_ant_tit -= 1
-
-            try:
-                f_nac_sel = pd.to_datetime(datos_c.get('fechanacimiento'), errors='coerce')
-                edad_sel = hoy.year - f_nac_sel.year - ((hoy.month, hoy.day) < (f_nac_sel.month, f_nac_sel.day)) if pd.notnull(f_nac_sel) else "S/I"
-            except:
-                edad_sel = "S/I"
-            edad_sel_txt = f"{edad_sel} años" if edad_sel != "S/I" else "S/I"
-            
-            st.markdown(f"""<div class="case-info-banner"><b>Caso:</b> {caso_sel} | <b>RIT:</b> {datos_c['RIT']} | <b>Edad:</b> {edad_sel_txt} | <b>Ingreso:</b> {f_ingreso.strftime('%d-%m-%Y')} | <b>Antigüedad:</b> {m_ant_tit} meses</div>""", unsafe_allow_html=True)
-
-            hitos_inicial, hitos_larga = [], []
-            for i, nombre_inf in enumerate(NOMBRES_TABLA):
-                fecha_limite = (pd.to_datetime(f_ingreso) + pd.DateOffset(months=3 * (i + 1))).date()
-                reg_e = df_e[(df_e['Caso'] == caso_sel) & (df_e['Informe'] == nombre_inf)]
-                f_envio_str = reg_e.iloc[0]['Fecha Envio Real'].strftime('%d-%m-%Y') if not reg_e.empty else "-"
-                
-                if i == 0: f_ref_ope = f_ingreso
-                else:
-                    reg_prev = df_e[(df_e['Caso'] == caso_sel) & (df_e['Informe'] == NOMBRES_TABLA[i-1])]
-                    f_ref_ope = reg_prev.iloc[0]['Fecha Envio Real'] if not reg_prev.empty else None
-                
-                venc_ope_str = (pd.to_datetime(f_ref_ope) + pd.DateOffset(months=3)).strftime('%d-%m-%Y') if f_ref_ope else "-"
-                vigencia_str = "🟢 VIGENTE" if f_ref_ope and hoy <= (pd.to_datetime(f_ref_ope) + pd.DateOffset(months=3)).date() else "🔴 VENCIDO"
-
-                if not reg_e.empty:
-                    f_real = reg_e.iloc[0]['Fecha Envio Real']
-                    desfase_dias = (f_real - fecha_limite).days
-                    desfase_str = f"✅ A tiempo ({abs(desfase_dias)} días)" if desfase_dias <= 0 else f"⚠️ Retraso de {desfase_dias} días"
-                else:
-                    dias_res = (fecha_limite - hoy).days
-                    desfase_str = f"Atrasado por {abs(dias_res)} días" if dias_res < 0 else f"Faltan {dias_res} días"
-                
-                fila = {
-                    "Informe": nombre_inf, "Fecha Límite": fecha_limite.strftime('%d-%m-%Y'), 
-                    "Fecha Envío Real": f_envio_str, "Desfase": desfase_str, 
-                    "Fecha Corresponde": venc_ope_str, "Vigencia (3m)": vigencia_str
-                }
-                if i < 7: hitos_inicial.append(fila)
-                else: hitos_larga.append(fila)
-
-            st.write("### ⏱️ Cronograma de Informes")
-            if caso_sel:
-                try:
-                    pdf_cron = generar_pdf_cronograma(caso_sel, f_ingreso, pd.DataFrame(hitos_inicial + hitos_larga))
-                    st.download_button("📥 Descargar Cronograma (PDF)", pdf_cron, f"Cronograma_{caso_sel}.pdf")
-                except Exception as e:
-                    st.warning(f"Error al generar PDF: {e}")
-            
-            st.dataframe(pd.DataFrame(hitos_inicial), use_container_width=True, hide_index=True)
-            tiene_larga_activa = len(hitos_larga) > 0 and m_ant_tit >= 21
-            
-            if tiene_larga_activa:
-                st.markdown("---")
-                st.write("### 🏠 Larga Permanencia")
-                st.dataframe(pd.DataFrame(hitos_larga), use_container_width=True, hide_index=True)
+            if st.session_state.user_role == "admin":
+                sel_etiqueta = st.selectbox("Selecciona Dupla:", opciones_duplas_vista)
+                dupla_sel_id = mapping_opciones[sel_etiqueta]
+                prof_sel = duplas_nombres.get(dupla_sel_id, "")
             else:
-                if len(hitos_larga) > 0:
-                    st.markdown("---")
-                    col_btn_lp, _ = st.columns([2, 3])
-                    with col_btn_lp:
-                        if st.button("📂 Mostrar Cronograma / Larga Permanencia", key="btn_toggle_larga"):
-                            st.session_state.mostrar_larga_permanencia_ind = not st.session_state.mostrar_larga_permanencia_ind
-                    
-                    if st.session_state.mostrar_larga_permanencia_ind:
-                        st.write("### 🏠 Larga Permanencia")
-                        st.dataframe(pd.DataFrame(hitos_larga), use_container_width=True, hide_index=True)
-
-            st.divider()
-            resumen_maestro_pdf = [] 
-            for _, row in df_c_filtrado.iterrows():
-                c_nombre, f_ing = row['Caso'], row['Fecha Ingreso']
-                entregas_caso = df_e[df_e['Caso'] == c_nombre]
-                idx_proximo = len(entregas_caso)
-                if idx_proximo < len(NOMBRES_TABLA):
-                    proximo_inf = NOMBRES_TABLA[idx_proximo]
-                    f_ref_op = pd.to_datetime(entregas_caso['Fecha Envio Real']).max().date() if not entregas_caso.empty else f_ing
-                    venc_op = (pd.to_datetime(f_ref_op) + pd.DateOffset(months=3)).date()
-                    fecha_limite_teo = (pd.to_datetime(f_ing) + pd.DateOffset(months=3 * (idx_proximo + 1))).date()
-                    resumen_maestro_pdf.append({
-                        "Caso": c_nombre, "Próximo Informe": proximo_inf, "F. Límite (Teo)": fecha_limite_teo, 
-                        "Estado (Ingreso)": "🔴 VENCIDO" if hoy > fecha_limite_teo else "⚪ EN PLAZO", 
-                        "Venc. (3m)": venc_op, "Estado (Operativo)": "🟢 VIGENTE" if hoy <= venc_op else "🔴 VENCIDO", "Meses": "0"
-                    })
+                dupla_sel_id = obtener_dupla_id_para_caso(st.session_state.user_name)
+                prof_sel = duplas_nombres.get(dupla_sel_id, st.session_state.user_name)
+                st.info(f"Visualizando casos de: **{dupla_sel_id} ({prof_sel})**")
             
-            df_maestro_vista = pd.DataFrame(resumen_maestro_pdf)
-            if not df_maestro_vista.empty:
-                df_maestro_vista = df_maestro_vista.sort_values(by="Venc. (3m)", ascending=True).reset_index(drop=True)
-                df_maestro_vista['F. Límite (Teo)'] = pd.to_datetime(df_maestro_vista['F. Límite (Teo)']).dt.strftime('%d-%m-%Y')
-                df_maestro_vista['Venc. (3m)'] = pd.to_datetime(df_maestro_vista['Venc. (3m)']).dt.strftime('%d-%m-%Y')
+            df_c_filtrado = df_c[df_c['Dupla_ID_Asignada'] == dupla_sel_id]
 
-                st.subheader("📋 Próximas Entregas (Ordenadas por Venc. 3m)")
-                st.dataframe(df_maestro_vista[["Caso", "Próximo Informe", "F. Límite (Teo)", "Venc. (3m)", "Estado (Operativo)"]], use_container_width=True, hide_index=True)
+            if not df_c_filtrado.empty:
+                col_graf1, col_graf2 = st.columns([5, 1])
+                data_grafico_barras = [] 
+                detalles_pendientes_ind = []
+                with col_graf1:
+                    st.markdown("#### 📊 Días desde último envío por caso")
+                    for c in df_c_filtrado['Caso'].unique():
+                        envios_caso = df_e[df_e['Caso'] == c]
+                        f_ingreso_c = df_c[df_c['Caso'] == c].iloc[0]['Fecha Ingreso']
+                        meses_ant = (hoy.year - f_ingreso_c.year) * 12 + (hoy.month - f_ingreso_c.month)
+                        if hoy.day < f_ingreso_c.day: meses_ant -= 1
+                    
+                        if not envios_caso.empty:
+                            ultima_fecha = pd.to_datetime(envios_caso['Fecha Envio Real']).max().date()
+                            etiqueta = "Días desde último envío"
+                        else:
+                            ultima_fecha = f_ingreso_c
+                            etiqueta = "días desde ingreso (Diagnóstico)"
+                    
+                        vencimiento_3m = (pd.to_datetime(ultima_fecha) + pd.DateOffset(months=3)).date()
+                    
+                        data_grafico_barras.append({
+                            "Caso": c, "Días": (hoy - ultima_fecha).days, "Tipo": etiqueta, 
+                            "Fecha Referencia": ultima_fecha.strftime('%d-%m-%Y'), 
+                            "Meses en Programa": f"{meses_ant} meses",
+                            "Límite 3 meses": vencimiento_3m.strftime('%d-%m-%Y')
+                        })
+
+                        if (hoy - ultima_fecha).days > 90:
+                            entregados_lista = envios_caso['Informe'].tolist()
+                            idx_proximo = max([NOMBRES_TABLA.index(inf) for inf in entregados_lista if inf in NOMBRES_TABLA]) + 1 if entregados_lista else 0
+                            proximo_inf = NOMBRES_TABLA[idx_proximo] if idx_proximo < len(NOMBRES_TABLA) else "-"
+                            detalles_pendientes_ind.append({
+                                "Caso": c,
+                                "RIT": df_c[df_c['Caso'] == c].iloc[0]['RIT'],
+                                "Próximo Informe": proximo_inf,
+                                "Venc. (3m)": vencimiento_3m,
+                                "Meses": meses_ant
+                            })
+                
+                    df_grafico = pd.DataFrame(data_grafico_barras)
+                    df_grafico['Etiqueta'] = df_grafico['Días'].apply(lambda d: "🆕 0 (Recién ingresado)" if d == 0 else str(d))
+                    fig_barras = px.bar(df_grafico, x='Caso', y='Días', color='Tipo', text='Etiqueta', 
+                                       hover_name=None,
+                                       hover_data={
+                                           'Caso': False, 'Tipo': False, 'Días': False, 'Etiqueta': False,
+                                           'Fecha Referencia': True, 'Meses en Programa': True, 'Límite 3 meses': True
+                                       },
+                                       color_discrete_map={"Días desde último envío": COLOR_VERDE_IRIDEM, "días desde ingreso (Diagnóstico)": COLOR_GRIS_IRIDEM})
+                
+                    fig_barras.add_hline(y=90, line_color="#ff7f7f", line_width=2)
+                    fig_barras.add_hline(y=80, line_color="#f1c40f", line_width=2, line_dash="dash")
+                
+                    fig_barras.add_annotation(
+                        x=1.01, y=90, xref="paper", yref="y",
+                        text="Límite (90 días)", showarrow=False, xanchor="left",
+                        font=dict(color="#ff7f7f", size=13)
+                    )
+                    fig_barras.add_annotation(
+                        x=1.01, y=80, xref="paper", yref="y",
+                        text="Alerta (80 días)", showarrow=False, xanchor="left",
+                        font=dict(color="#d4ac0d", size=13)
+                    )
+
+                    fig_barras.update_layout(
+                        xaxis_tickangle=-45, height=400, paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO,
+                        margin=dict(t=30, b=40, l=40, r=120),
+                        legend=dict(yanchor="top", y=0.4, xanchor="left", x=1.05)
+                    )
+                
+                    evento_clic = st.plotly_chart(fig_barras, use_container_width=True, on_select="rerun", key="grafico_barras_ind")
+                    if evento_clic and evento_clic.selection and len(evento_clic.selection.points) > 0:
+                        st.session_state.caso_seleccionado = evento_clic.selection.points[0]['x']
+
+                cumple_count = sum(1 for d in data_grafico_barras if d['Días'] <= 90)
+                no_cumple_count = len(data_grafico_barras) - cumple_count
+
+                with col_graf2:
+                    st.markdown("#### 🎯 Cumplimiento")
+                    fig_torta = go.Figure(data=[go.Pie(
+                        labels=['Al día', 'Fuera de plazo'], values=[cumple_count, no_cumple_count], hole=.5, 
+                        marker_colors=[COLOR_VERDE_IRIDEM, COLOR_GRIS_IRIDEM], textposition='inside', insidetextorientation='horizontal', textinfo='percent', textfont=dict(size=14, color="white")
+                    )])
+                    fig_torta.update_layout(
+                        margin=dict(t=0, b=0, l=0, r=0), height=300, showlegend=True, 
+                        legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
+                        paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO
+                    )
+                    st.plotly_chart(fig_torta, use_container_width=True)
+                    st.write(f"<div style='margin-top: 10px; text-align: center;'><b>Total: {cumple_count + no_cumple_count} casos</b></div>", unsafe_allow_html=True)
+
+                    if no_cumple_count > 0:
+                        st.markdown('<div class="gray-container">', unsafe_allow_html=True)
+                        if st.button(f"⚠️ Ver {no_cumple_count} Informes Pendientes", use_container_width=True, key="btn_pendientes_ind"):
+                            st.session_state.ver_pendientes_ind = not st.session_state.ver_pendientes_ind
+                        st.markdown('</div>', unsafe_allow_html=True)
+
+                if st.session_state.ver_pendientes_ind and no_cumple_count > 0:
+                    st.warning(f"⚠️ Casos Fuera de Plazo: {dupla_sel_id} ({prof_sel})")
+                    df_pend_ind = pd.DataFrame(detalles_pendientes_ind)
+                    df_pend_ind = df_pend_ind.sort_values(by="Venc. (3m)", ascending=True).reset_index(drop=True)
+                    df_pend_ind['Venc. (3m)'] = pd.to_datetime(df_pend_ind['Venc. (3m)']).dt.strftime('%d-%m-%Y')
+                    st.dataframe(df_pend_ind, use_container_width=True, hide_index=True)
+
+                st.divider()
+                lista_casos_f = sorted(df_c_filtrado['Caso'].unique())
+                if st.session_state.caso_seleccionado not in lista_casos_f:
+                    st.session_state.caso_seleccionado = lista_casos_f[0]
+                lista_con_marca = [f"📍 {c}" if c == st.session_state.caso_seleccionado else c for c in lista_casos_f]
+                idx_sel = lista_casos_f.index(st.session_state.caso_seleccionado)
+                caso_sel_raw = st.selectbox("2. Caso seleccionado:", lista_con_marca, index=idx_sel)
+                caso_sel = caso_sel_raw.replace("📍 ", "")
+                st.session_state.caso_seleccionado = caso_sel
+                datos_c = df_c[df_c['Caso'] == caso_sel].iloc[0]
+                f_ingreso = datos_c['Fecha Ingreso']
+                m_ant_tit = (hoy.year - f_ingreso.year) * 12 + (hoy.month - f_ingreso.month)
+                if hoy.day < f_ingreso.day: m_ant_tit -= 1
+
                 try:
-                    pdf_ejecutivo = generar_pdf_visual(f"{dupla_sel_id} ({prof_sel})", df_maestro_vista, cumple_count, no_cumple_count)
-                    st.download_button("📥 Descargar Reporte Ejecutivo (PDF)", pdf_ejecutivo, f"Reporte_{dupla_sel_id}.pdf")
-                except Exception as e:
-                    st.info(f"Reporte PDF no disponible: {e}")
-        else:
-            st.info("No hay casos asociados actualmente a esta dupla en la base de datos.")
+                    f_nac_sel = pd.to_datetime(datos_c.get('fechanacimiento'), errors='coerce')
+                    edad_sel = hoy.year - f_nac_sel.year - ((hoy.month, hoy.day) < (f_nac_sel.month, f_nac_sel.day)) if pd.notnull(f_nac_sel) else "S/I"
+                except:
+                    edad_sel = "S/I"
+                edad_sel_txt = f"{edad_sel} años" if edad_sel != "S/I" else "S/I"
+            
+                st.markdown(f"""<div class="case-info-banner"><b>Caso:</b> {caso_sel} | <b>RIT:</b> {datos_c['RIT']} | <b>Edad:</b> {edad_sel_txt} | <b>Ingreso:</b> {f_ingreso.strftime('%d-%m-%Y')} | <b>Antigüedad:</b> {m_ant_tit} meses</div>""", unsafe_allow_html=True)
+
+                hitos_inicial, hitos_larga = [], []
+                for i, nombre_inf in enumerate(NOMBRES_TABLA):
+                    fecha_limite = (pd.to_datetime(f_ingreso) + pd.DateOffset(months=3 * (i + 1))).date()
+                    reg_e = df_e[(df_e['Caso'] == caso_sel) & (df_e['Informe'] == nombre_inf)]
+                    f_envio_str = reg_e.iloc[0]['Fecha Envio Real'].strftime('%d-%m-%Y') if not reg_e.empty else "-"
+                
+                    if i == 0: f_ref_ope = f_ingreso
+                    else:
+                        reg_prev = df_e[(df_e['Caso'] == caso_sel) & (df_e['Informe'] == NOMBRES_TABLA[i-1])]
+                        f_ref_ope = reg_prev.iloc[0]['Fecha Envio Real'] if not reg_prev.empty else None
+                
+                    venc_ope_str = (pd.to_datetime(f_ref_ope) + pd.DateOffset(months=3)).strftime('%d-%m-%Y') if f_ref_ope else "-"
+                    vigencia_str = "🟢 VIGENTE" if f_ref_ope and hoy <= (pd.to_datetime(f_ref_ope) + pd.DateOffset(months=3)).date() else "🔴 VENCIDO"
+
+                    if not reg_e.empty:
+                        f_real = reg_e.iloc[0]['Fecha Envio Real']
+                        desfase_dias = (f_real - fecha_limite).days
+                        desfase_str = f"✅ A tiempo ({abs(desfase_dias)} días)" if desfase_dias <= 0 else f"⚠️ Retraso de {desfase_dias} días"
+                    else:
+                        dias_res = (fecha_limite - hoy).days
+                        desfase_str = f"Atrasado por {abs(dias_res)} días" if dias_res < 0 else f"Faltan {dias_res} días"
+                
+                    fila = {
+                        "Informe": nombre_inf, "Fecha Límite": fecha_limite.strftime('%d-%m-%Y'), 
+                        "Fecha Envío Real": f_envio_str, "Desfase": desfase_str, 
+                        "Fecha Corresponde": venc_ope_str, "Vigencia (3m)": vigencia_str
+                    }
+                    if i < 7: hitos_inicial.append(fila)
+                    else: hitos_larga.append(fila)
+
+                st.write("### ⏱️ Cronograma de Informes")
+                if caso_sel:
+                    try:
+                        pdf_cron = generar_pdf_cronograma(caso_sel, f_ingreso, pd.DataFrame(hitos_inicial + hitos_larga))
+                        st.download_button("📥 Descargar Cronograma (PDF)", pdf_cron, f"Cronograma_{caso_sel}.pdf")
+                    except Exception as e:
+                        st.warning(f"Error al generar PDF: {e}")
+            
+                st.dataframe(pd.DataFrame(hitos_inicial), use_container_width=True, hide_index=True)
+                tiene_larga_activa = len(hitos_larga) > 0 and m_ant_tit >= 21
+            
+                if tiene_larga_activa:
+                    st.markdown("---")
+                    st.write("### 🏠 Larga Permanencia")
+                    st.dataframe(pd.DataFrame(hitos_larga), use_container_width=True, hide_index=True)
+                else:
+                    if len(hitos_larga) > 0:
+                        st.markdown("---")
+                        col_btn_lp, _ = st.columns([2, 3])
+                        with col_btn_lp:
+                            if st.button("📂 Mostrar Cronograma / Larga Permanencia", key="btn_toggle_larga"):
+                                st.session_state.mostrar_larga_permanencia_ind = not st.session_state.mostrar_larga_permanencia_ind
+                    
+                        if st.session_state.mostrar_larga_permanencia_ind:
+                            st.write("### 🏠 Larga Permanencia")
+                            st.dataframe(pd.DataFrame(hitos_larga), use_container_width=True, hide_index=True)
+
+                st.divider()
+                resumen_maestro_pdf = [] 
+                for _, row in df_c_filtrado.iterrows():
+                    c_nombre, f_ing = row['Caso'], row['Fecha Ingreso']
+                    entregas_caso = df_e[df_e['Caso'] == c_nombre]
+                    idx_proximo = len(entregas_caso)
+                    if idx_proximo < len(NOMBRES_TABLA):
+                        proximo_inf = NOMBRES_TABLA[idx_proximo]
+                        f_ref_op = pd.to_datetime(entregas_caso['Fecha Envio Real']).max().date() if not entregas_caso.empty else f_ing
+                        venc_op = (pd.to_datetime(f_ref_op) + pd.DateOffset(months=3)).date()
+                        fecha_limite_teo = (pd.to_datetime(f_ing) + pd.DateOffset(months=3 * (idx_proximo + 1))).date()
+                        resumen_maestro_pdf.append({
+                            "Caso": c_nombre, "Próximo Informe": proximo_inf, "F. Límite (Teo)": fecha_limite_teo, 
+                            "Estado (Ingreso)": "🔴 VENCIDO" if hoy > fecha_limite_teo else "⚪ EN PLAZO", 
+                            "Venc. (3m)": venc_op, "Estado (Operativo)": "🟢 VIGENTE" if hoy <= venc_op else "🔴 VENCIDO", "Meses": "0"
+                        })
+            
+                df_maestro_vista = pd.DataFrame(resumen_maestro_pdf)
+                if not df_maestro_vista.empty:
+                    df_maestro_vista = df_maestro_vista.sort_values(by="Venc. (3m)", ascending=True).reset_index(drop=True)
+                    df_maestro_vista['F. Límite (Teo)'] = pd.to_datetime(df_maestro_vista['F. Límite (Teo)']).dt.strftime('%d-%m-%Y')
+                    df_maestro_vista['Venc. (3m)'] = pd.to_datetime(df_maestro_vista['Venc. (3m)']).dt.strftime('%d-%m-%Y')
+
+                    st.subheader("📋 Próximas Entregas (Ordenadas por Venc. 3m)")
+                    st.dataframe(df_maestro_vista[["Caso", "Próximo Informe", "F. Límite (Teo)", "Venc. (3m)", "Estado (Operativo)"]], use_container_width=True, hide_index=True)
+                    try:
+                        pdf_ejecutivo = generar_pdf_visual(f"{dupla_sel_id} ({prof_sel})", df_maestro_vista, cumple_count, no_cumple_count)
+                        st.download_button("📥 Descargar Reporte Ejecutivo (PDF)", pdf_ejecutivo, f"Reporte_{dupla_sel_id}.pdf")
+                    except Exception as e:
+                        st.info(f"Reporte PDF no disponible: {e}")
+            else:
+                st.info("No hay casos asociados actualmente a esta dupla en la base de datos.")
 
     if st.session_state.user_role == "admin":
         with tab_global:
@@ -1155,7 +1161,7 @@ if not df_c.empty:
                     df_lista_simple.to_excel(writer, index=False, sheet_name='Lista_Simple')
                 st.download_button("📋 Descargar Lista Simple (Excel)", output_simple.getvalue(), "Lista_Simple_FAE.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-    if st.session_state.user_role == "admin":
+    if st.session_state.user_role in ("admin", "espera"):
         with tab_espera:
             st.subheader("👥 Casos Activos por Dupla")
             st.caption("Referencia para decidir a quién asignar el próximo ingreso.")
@@ -1258,68 +1264,69 @@ if not df_c.empty:
                             st.rerun()
             else: st.success("No hay casos en lista de espera.")
 
-            st.divider()
-            st.subheader("➕ Registrar Caso desde Lista de Espera")
-            df_le_reg = cargar_lista_espera()
-            if not df_le_reg.empty:
-                opciones_le = {}
-                for idx, r in df_le_reg.iterrows():
-                    nombre_completo = f"{r.get('Nombres', '')} {r.get('Apellido_Paterno', '')} {r.get('Apellido_Materno', '')}".strip()
-                    rit_ref = r.get('RIT', 'S/R') if pd.notnull(r.get('RIT')) else "S/R"
-                    opciones_le[f"{nombre_completo} - RIT {rit_ref}"] = idx
+            if st.session_state.user_role == "admin":
+                st.divider()
+                st.subheader("➕ Registrar Caso desde Lista de Espera")
+                df_le_reg = cargar_lista_espera()
+                if not df_le_reg.empty:
+                    opciones_le = {}
+                    for idx, r in df_le_reg.iterrows():
+                        nombre_completo = f"{r.get('Nombres', '')} {r.get('Apellido_Paterno', '')} {r.get('Apellido_Materno', '')}".strip()
+                        rit_ref = r.get('RIT', 'S/R') if pd.notnull(r.get('RIT')) else "S/R"
+                        opciones_le[f"{nombre_completo} - RIT {rit_ref}"] = idx
 
-                seleccion_le = st.selectbox("Selecciona a la persona de la Lista de Espera", ["---"] + list(opciones_le.keys()), key="sel_le_a_caso")
+                    seleccion_le = st.selectbox("Selecciona a la persona de la Lista de Espera", ["---"] + list(opciones_le.keys()), key="sel_le_a_caso")
 
-                if seleccion_le != "---":
-                    fila_le = df_le_reg.loc[opciones_le[seleccion_le]]
-                    nombre_sugerido = f"{fila_le.get('Nombres', '')} {fila_le.get('Apellido_Paterno', '')} {fila_le.get('Apellido_Materno', '')}".strip()
-                    rit_sugerido = str(fila_le.get('RIT', '')) if pd.notnull(fila_le.get('RIT')) else ""
-                    fecnac_le = fila_le.get('FechaNacimiento')
-                    fecnac_sugerida = fecnac_le if pd.notnull(fecnac_le) else datetime.now()
-                    cod_le = fila_le.get('CodNino')
-                    codnino_sugerido = str(int(cod_le)) if cod_le is not None and pd.notnull(cod_le) else ""
+                    if seleccion_le != "---":
+                        fila_le = df_le_reg.loc[opciones_le[seleccion_le]]
+                        nombre_sugerido = f"{fila_le.get('Nombres', '')} {fila_le.get('Apellido_Paterno', '')} {fila_le.get('Apellido_Materno', '')}".strip()
+                        rit_sugerido = str(fila_le.get('RIT', '')) if pd.notnull(fila_le.get('RIT')) else ""
+                        fecnac_le = fila_le.get('FechaNacimiento')
+                        fecnac_sugerida = fecnac_le if pd.notnull(fecnac_le) else datetime.now()
+                        cod_le = fila_le.get('CodNino')
+                        codnino_sugerido = str(int(cod_le)) if cod_le is not None and pd.notnull(cod_le) else ""
 
-                    with st.form("form_le_a_caso"):
-                        caso_nombre_nuevo = st.text_input("Nombre del Caso", nombre_sugerido)
-                        rit_nuevo = st.text_input("Causa RIT", rit_sugerido)
-                        codnino_nuevo = st.text_input("Cod. Niño", codnino_sugerido)
-                        fecnac_nuevo = st.date_input("Fecha de Nacimiento", fecnac_sugerida, min_value=datetime(1990, 1, 1))
+                        with st.form("form_le_a_caso"):
+                            caso_nombre_nuevo = st.text_input("Nombre del Caso", nombre_sugerido)
+                            rit_nuevo = st.text_input("Causa RIT", rit_sugerido)
+                            codnino_nuevo = st.text_input("Cod. Niño", codnino_sugerido)
+                            fecnac_nuevo = st.date_input("Fecha de Nacimiento", fecnac_sugerida, min_value=datetime(1990, 1, 1))
                         
-                        opciones_duplas_le = [f"{d}: {duplas_nombres.get(d, '')}" for d in [f"Dupla {i}" for i in range(1, 8)]]
-                        prof_elegido_le = st.selectbox("Asignar Dupla", opciones_duplas_le, key="prof_le_a_caso")
-                        dupla_id_le = prof_elegido_le.split(":")[0].strip()
-                        # Se guarda el ID estable de la dupla, no el nombre resuelto de integrantes.
-                        prof_nuevo = dupla_id_le
+                            opciones_duplas_le = [f"{d}: {duplas_nombres.get(d, '')}" for d in [f"Dupla {i}" for i in range(1, 8)]]
+                            prof_elegido_le = st.selectbox("Asignar Dupla", opciones_duplas_le, key="prof_le_a_caso")
+                            dupla_id_le = prof_elegido_le.split(":")[0].strip()
+                            # Se guarda el ID estable de la dupla, no el nombre resuelto de integrantes.
+                            prof_nuevo = dupla_id_le
 
-                        f_ing_nuevo = st.date_input("Fecha Ingreso", datetime.now(), key="fing_le_a_caso")
+                            f_ing_nuevo = st.date_input("Fecha Ingreso", datetime.now(), key="fing_le_a_caso")
 
-                        if st.form_submit_button("✅ Registrar como Caso y eliminar de Lista de Espera") and caso_nombre_nuevo:
-                            try:
-                                tribunal_le = fila_le.get('Tribunal')
-                                comuna_le = fila_le.get('ComunaNiño_a')
-                                nuevo_caso = {
-                                    "Caso": str(caso_nombre_nuevo).strip(), "RIT": str(rit_nuevo).strip(),
-                                    "codnino": str(codnino_nuevo).strip(), "fechanacimiento": str(fecnac_nuevo),
-                                    "Profesional": prof_nuevo, "Fecha Ingreso": str(f_ing_nuevo),
-                                    "Tribunal": str(tribunal_le).strip() if pd.notnull(tribunal_le) else "S/I",
-                                    "Comuna": str(comuna_le).strip() if pd.notnull(comuna_le) else "S/I",
-                                }
-                                supabase.table("casos").insert(nuevo_caso).execute()
+                            if st.form_submit_button("✅ Registrar como Caso y eliminar de Lista de Espera") and caso_nombre_nuevo:
+                                try:
+                                    tribunal_le = fila_le.get('Tribunal')
+                                    comuna_le = fila_le.get('ComunaNiño_a')
+                                    nuevo_caso = {
+                                        "Caso": str(caso_nombre_nuevo).strip(), "RIT": str(rit_nuevo).strip(),
+                                        "codnino": str(codnino_nuevo).strip(), "fechanacimiento": str(fecnac_nuevo),
+                                        "Profesional": prof_nuevo, "Fecha Ingreso": str(f_ing_nuevo),
+                                        "Tribunal": str(tribunal_le).strip() if pd.notnull(tribunal_le) else "S/I",
+                                        "Comuna": str(comuna_le).strip() if pd.notnull(comuna_le) else "S/I",
+                                    }
+                                    supabase.table("casos").insert(nuevo_caso).execute()
 
-                                if 'id' in fila_le.index and pd.notnull(fila_le.get('id')):
-                                    supabase.table("lista_espera").delete().eq("id", int(fila_le['id'])).execute()
-                                else:
-                                    supabase.table("lista_espera").delete().match({
-                                        "Nombres": fila_le.get('Nombres'), "Apellido_Paterno": fila_le.get('Apellido_Paterno'),
-                                        "Apellido_Materno": fila_le.get('Apellido_Materno'),
-                                    }).execute()
+                                    if 'id' in fila_le.index and pd.notnull(fila_le.get('id')):
+                                        supabase.table("lista_espera").delete().eq("id", int(fila_le['id'])).execute()
+                                    else:
+                                        supabase.table("lista_espera").delete().match({
+                                            "Nombres": fila_le.get('Nombres'), "Apellido_Paterno": fila_le.get('Apellido_Paterno'),
+                                            "Apellido_Materno": fila_le.get('Apellido_Materno'),
+                                        }).execute()
 
-                                st.success(f"✅ Caso '{caso_nombre_nuevo}' registrado y eliminado de la Lista de Espera")
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"❌ Error al registrar: {e}")
-            else:
-                st.caption("No hay personas en la Lista de Espera para registrar como caso.")
+                                    st.success(f"✅ Caso '{caso_nombre_nuevo}' registrado y eliminado de la Lista de Espera")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"❌ Error al registrar: {e}")
+                else:
+                    st.caption("No hay personas en la Lista de Espera para registrar como caso.")
 
     if st.session_state.user_role == "admin":
         with tab_sis:
@@ -1331,68 +1338,69 @@ if not df_c.empty:
                     components.html(f.read(), height=1200, scrolling=True)
             else: st.warning("Archivo de analítica no encontrado.")
 
-    with tab_word:
-        st.link_button("📝 Abrir Automatizador Word (versión completa)", "https://automatizador-rf-wvfwwtdka7rkyxkmu68ca2.streamlit.app/", use_container_width=True)
-        st.caption("Se abre en una pestaña nueva. Abajo está la versión integrada en este dashboard.")
-        st.divider()
-        st.subheader("📝 Automatizador de Documentos Word")
-        opcion_plantilla = st.selectbox("Selecciona la plantilla:", ["Informe de evaluación", "Registro de intervención", "Subir propia (.docx)"])
-        plantilla_final = "plantilla.docx" if opcion_plantilla == "Informe de evaluación" else ("plantilla_2.docx" if opcion_plantilla == "Registro de intervención" else st.file_uploader("Sube plantilla", type=["docx"]))
+    if st.session_state.user_role != "espera":
+        with tab_word:
+            st.link_button("📝 Abrir Automatizador Word (versión completa)", "https://automatizador-rf-wvfwwtdka7rkyxkmu68ca2.streamlit.app/", use_container_width=True)
+            st.caption("Se abre en una pestaña nueva. Abajo está la versión integrada en este dashboard.")
+            st.divider()
+            st.subheader("📝 Automatizador de Documentos Word")
+            opcion_plantilla = st.selectbox("Selecciona la plantilla:", ["Informe de evaluación", "Registro de intervención", "Subir propia (.docx)"])
+            plantilla_final = "plantilla.docx" if opcion_plantilla == "Informe de evaluación" else ("plantilla_2.docx" if opcion_plantilla == "Registro de intervención" else st.file_uploader("Sube plantilla", type=["docx"]))
         
-        uploaded_excel = st.file_uploader("Sube tu archivo Excel con los datos", type=["xlsx"])
-        if uploaded_excel and plantilla_final:
-            df_word_raw = pd.read_excel(uploaded_excel)
-            df_word_raw.columns = limpiar_y_asegurar_unicos(df_word_raw.columns)
+            uploaded_excel = st.file_uploader("Sube tu archivo Excel con los datos", type=["xlsx"])
+            if uploaded_excel and plantilla_final:
+                df_word_raw = pd.read_excel(uploaded_excel)
+                df_word_raw.columns = limpiar_y_asegurar_unicos(df_word_raw.columns)
 
-            if opcion_plantilla == "Informe de evaluación":
-                st.info("💡 Este documento usa solo la primera fila del Excel (un informe de evaluación = un caso).")
-                st.write(f"🔍 Datos detectados: {len(df_word_raw)} fila(s) en el Excel — se usará la primera.")
+                if opcion_plantilla == "Informe de evaluación":
+                    st.info("💡 Este documento usa solo la primera fila del Excel (un informe de evaluación = un caso).")
+                    st.write(f"🔍 Datos detectados: {len(df_word_raw)} fila(s) en el Excel — se usará la primera.")
 
-                if st.button("🚀 Generar y Descargar Documento"):
-                    fila = df_word_raw.iloc[0]
-                    data_dict = {k: limpiar_dato_word(v, k) for k, v in fila.items()}
-                    if 'descripcionevento' in data_dict:
-                        data_dict['objetivo'] = extraer_objetivo_al_inicio(data_dict['descripcionevento'])
-                        data_dict['descripcionevento'] = limpiar_descripcion_original(data_dict['descripcionevento'])
+                    if st.button("🚀 Generar y Descargar Documento"):
+                        fila = df_word_raw.iloc[0]
+                        data_dict = {k: limpiar_dato_word(v, k) for k, v in fila.items()}
+                        if 'descripcionevento' in data_dict:
+                            data_dict['objetivo'] = extraer_objetivo_al_inicio(data_dict['descripcionevento'])
+                            data_dict['descripcionevento'] = limpiar_descripcion_original(data_dict['descripcionevento'])
 
-                    doc = DocxTemplate(plantilla_final)
-                    doc.render(data_dict)
-                    doc_io = io.BytesIO()
-                    doc.save(doc_io)
-                    doc_io.seek(0)
+                        doc = DocxTemplate(plantilla_final)
+                        doc.render(data_dict)
+                        doc_io = io.BytesIO()
+                        doc.save(doc_io)
+                        doc_io.seek(0)
 
-                    nombre_nna = " ".join(str(data_dict.get(k, '')).strip() for k in ['nombres', 'apellido_paterno', 'apellido_materno'] if data_dict.get(k, '-') not in ('', '-')).strip()
-                    nombre_archivo = f"Informe de Evaluación - {nombre_nna}.docx" if nombre_nna else "Informe de Evaluación.docx"
+                        nombre_nna = " ".join(str(data_dict.get(k, '')).strip() for k in ['nombres', 'apellido_paterno', 'apellido_materno'] if data_dict.get(k, '-') not in ('', '-')).strip()
+                        nombre_archivo = f"Informe de Evaluación - {nombre_nna}.docx" if nombre_nna else "Informe de Evaluación.docx"
 
-                    st.success("✅ ¡Documento generado!")
-                    st.download_button(
-                        "📥 Descargar Informe de Evaluación",
-                        doc_io.getvalue(),
-                        nombre_archivo,
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    )
-            else:
-                st.write(f"🔍 Datos detectados: {len(df_word_raw)} filas.")
+                        st.success("✅ ¡Documento generado!")
+                        st.download_button(
+                            "📥 Descargar Informe de Evaluación",
+                            doc_io.getvalue(),
+                            nombre_archivo,
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        )
+                else:
+                    st.write(f"🔍 Datos detectados: {len(df_word_raw)} filas.")
 
-                if st.button("🚀 Generar y Descargar Documentos"):
-                    zip_buffer = io.BytesIO()
-                    with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
-                        for idx, fila in df_word_raw.iterrows():
-                            data_dict = {k: limpiar_dato_word(v, k) for k, v in fila.items()}
-                            if 'descripcionevento' in data_dict:
-                                data_dict['objetivo'] = extraer_objetivo_al_inicio(data_dict['descripcionevento'])
-                                data_dict['descripcionevento'] = limpiar_descripcion_original(data_dict['descripcionevento'])
+                    if st.button("🚀 Generar y Descargar Documentos"):
+                        zip_buffer = io.BytesIO()
+                        with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
+                            for idx, fila in df_word_raw.iterrows():
+                                data_dict = {k: limpiar_dato_word(v, k) for k, v in fila.items()}
+                                if 'descripcionevento' in data_dict:
+                                    data_dict['objetivo'] = extraer_objetivo_al_inicio(data_dict['descripcionevento'])
+                                    data_dict['descripcionevento'] = limpiar_descripcion_original(data_dict['descripcionevento'])
                             
-                            doc = DocxTemplate(plantilla_final)
-                            doc.render(data_dict)
-                            doc_io = io.BytesIO()
-                            doc.save(doc_io)
+                                doc = DocxTemplate(plantilla_final)
+                                doc.render(data_dict)
+                                doc_io = io.BytesIO()
+                                doc.save(doc_io)
                             
-                            name = f"{data_dict.get('nombres', 'Doc')}_{idx+1}.docx"
-                            zip_file.writestr(name, doc_io.getvalue())
+                                name = f"{data_dict.get('nombres', 'Doc')}_{idx+1}.docx"
+                                zip_file.writestr(name, doc_io.getvalue())
                     
-                    st.success("✅ ¡Documentos generados!")
-                    st.download_button("📥 Descargar ZIP", zip_buffer.getvalue(), "documentos_generados.zip", "application/zip")
+                        st.success("✅ ¡Documentos generados!")
+                        st.download_button("📥 Descargar ZIP", zip_buffer.getvalue(), "documentos_generados.zip", "application/zip")
 
     with tab_salas:
         render_gestion_salas(supabase, es_admin=(st.session_state.user_role == "admin"))
