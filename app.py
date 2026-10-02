@@ -1284,10 +1284,10 @@ if not df_c.empty:
             max_casos = df_conteo_final['Casos Activos'].max() if not df_conteo_final.empty else 10
             fig_conteo_dupla.update_traces(textposition='outside', textfont_size=11, width=0.4)
             fig_conteo_dupla.update_layout(
-                xaxis_tickangle=-25, height=380, paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO,
+                xaxis_tickangle=-25, height=280, paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO,
                 yaxis_title="N° de Casos", xaxis_title="",
                 yaxis=dict(range=[0, max_casos * 1.25]),
-                margin=dict(t=50, b=100)
+                margin=dict(t=30, b=80)
             )
             
             col_graf_espera, col_vacia_espera = st.columns([1, 1])
@@ -1328,10 +1328,10 @@ if not df_c.empty:
                 fig_ingresos_mes.update_traces(textposition="outside", textfont_size=11, width=0.5)
                 fig_ingresos_mes.update_xaxes(categoryorder="array", categoryarray=df_ingresos_mes["Mes"].tolist())
                 fig_ingresos_mes.update_layout(
-                    height=380, paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO,
+                    height=280, paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO,
                     xaxis_title="", yaxis_title="N° de casos", xaxis_tickangle=-45,
                     yaxis=dict(range=[0, max_ing * 1.25], dtick=1 if max_ing <= 10 else None),
-                    margin=dict(t=50, b=100)
+                    margin=dict(t=30, b=80)
                 )
                 evento_mes = st.plotly_chart(fig_ingresos_mes, use_container_width=True, on_select="rerun", key="grafico_ingresos_mes")
                 if evento_mes and evento_mes.selection and len(evento_mes.selection.points) > 0:
