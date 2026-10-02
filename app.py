@@ -179,6 +179,8 @@ def login_screen():
             if st.button("Ingresar", use_container_width=True):
                 if user in CREDENTIALS and CREDENTIALS[user]["pass"] == password:
                     st.session_state.cerrando_sesion = False
+                    for _k in ("salas_mes_sel", "salas_mes_sel_manual", "salas_mes_sel_user", "salas_mes_sel_user_manual"):
+                        st.session_state.pop(_k, None)
                     st.session_state.logged_in = True
                     st.session_state.user_role = CREDENTIALS[user]["role"]
                     st.session_state.user_name = CREDENTIALS[user]["name"]
@@ -788,7 +790,7 @@ if st.sidebar.button("🚪 Cerrar Sesión"):
     st.session_state.user_name = None
     st.session_state.caso_seleccionado = None
     # Al cambiar de cuenta, el calendario de salas vuelve a abrir en el mes en curso.
-    for _k in ("salas_mes_sel", "salas_mes_sel_user"):
+    for _k in ("salas_mes_sel", "salas_mes_sel_manual", "salas_mes_sel_user", "salas_mes_sel_user_manual"):
         st.session_state.pop(_k, None)
     # 2) Se borra la cookie del navegador (si falla el borrado, se sobrescribe con una ya vencida).
     try:
