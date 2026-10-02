@@ -1105,7 +1105,7 @@ if not df_c.empty:
                         edad = "S/I"
 
                     resumen_global_maestro.append({
-                        "Caso": c, "RIT": df_c[df_c['Caso'] == c].iloc[0]['RIT'],
+                        "Caso": c, "RIT": df_c[df_c['Caso'] == c].iloc[0]['RIT'], "Fecha Ingreso": f_ing_c,
                         "Profesional": integrantes_d, "Dupla_Label": dupla_etiqueta_g.replace("\n", " "), 
                         "Meses": m_ant, "Edad": edad,
                         "codnino": df_c[df_c['Caso'] == c].iloc[0].get('codnino', 'S/I')
@@ -1132,6 +1132,42 @@ if not df_c.empty:
                 df_pend_global = df_pend_global.sort_values(by="Venc. (3m)", ascending=True).reset_index(drop=True)
                 df_pend_global['Venc. (3m)'] = pd.to_datetime(df_pend_global['Venc. (3m)']).dt.strftime('%d-%m-%Y')
                 st.dataframe(df_pend_global, use_container_width=True, hide_index=True)
+
+            # --- Casos con más de 18 meses de permanencia ---
+            casos_mas_18m = []
+            for r_perm in resumen_global_maestro:
+                f_ing_perm = r_perm["Fecha Ingreso"]
+                if (pd.to_datetime(f_ing_perm) + pd.DateOffset(months=18)).date() < hoy:
+                    meses_perm = r_perm["Meses"]
+                    anios_perm, meses_resto = divmod(meses_perm, 12)
+                    partes_perm = []
+                    if anios_perm:
+                        partes_perm.append(f"{anios_perm} año" + ("s" if anios_perm != 1 else ""))
+                    if meses_resto:
+                        partes_perm.append(f"{meses_resto} mes" + ("es" if meses_resto != 1 else ""))
+                    casos_mas_18m.append({
+                        "Caso": r_perm["Caso"], "RIT": r_perm["RIT"], "Dupla": r_perm["Dupla_Label"],
+                        "Fecha Ingreso": f_ing_perm,
+                        "Meses de permanencia": meses_perm,
+                        "Permanencia": " y ".join(partes_perm) if partes_perm else "0 meses",
+                    })
+
+            if casos_mas_18m:
+                st.markdown('<div class="gray-container">', unsafe_allow_html=True)
+                if st.button(f"⏱️ Largas permanencias ({len(casos_mas_18m)})", use_container_width=True, key="btn_mas_18_global"):
+                    st.session_state.ver_mas_18_global = not st.session_state.get('ver_mas_18_global', False)
+                st.markdown('</div>', unsafe_allow_html=True)
+
+                if st.session_state.get('ver_mas_18_global', False):
+                    st.warning(f"⏱️ Largas permanencias (más de 18 meses): {len(casos_mas_18m)} caso(s)")
+                    df_mas_18 = pd.DataFrame(casos_mas_18m).sort_values(
+                        by=["Meses de permanencia", "Fecha Ingreso"], ascending=[False, True]
+                    ).reset_index(drop=True)
+                    df_mas_18['Fecha Ingreso'] = pd.to_datetime(df_mas_18['Fecha Ingreso']).dt.strftime('%d-%m-%Y')
+                    df_mas_18.insert(0, "N°", range(1, len(df_mas_18) + 1))
+                    st.dataframe(df_mas_18, use_container_width=True, hide_index=True)
+            else:
+                st.caption("No hay casos en largas permanencias (más de 18 meses).")
 
             st.divider()
             col_g1, col_g2 = st.columns([2, 1])
