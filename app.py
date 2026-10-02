@@ -1294,38 +1294,42 @@ if not df_c.empty:
             with col_graf_espera:
                 st.plotly_chart(fig_conteo_dupla, use_container_width=True)
 
-            # --- Casos asignados (detalle por dupla) ---
+            # --- Casos ingresados por mes (últimos 12 meses) ---
             st.divider()
-            st.subheader("📂 Casos Asignados por Dupla")
-            st.caption("Detalle de los casos que tiene cada dupla actualmente.")
+            st.subheader("📅 Casos Ingresados por Mes (último año)")
+            st.caption("Cantidad de casos que ingresaron al programa cada mes, según su fecha de ingreso.")
 
-            opciones_filtro_asig = ["Todas las duplas"] + [f"{d} ({duplas_nombres.get(d, '')})" for d in [f"Dupla {i}" for i in range(1, 8)]]
-            sel_asig = st.selectbox("Filtrar por dupla:", opciones_filtro_asig, key="filtro_asignados_espera")
+            nombres_mes_corto = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+            periodo_hoy = pd.Period(hoy, freq="M")
+            meses_rango = [periodo_hoy - i for i in range(11, -1, -1)]
+            ingresos_por_mes = pd.to_datetime(df_c['Fecha Ingreso']).dt.to_period("M").value_counts()
+            df_ingresos_mes = pd.DataFrame([
+                {"Mes": f"{nombres_mes_corto[p.month - 1]} {p.year}", "Casos ingresados": int(ingresos_por_mes.get(p, 0))}
+                for p in meses_rango
+            ])
+            total_ingresos_12m = int(df_ingresos_mes["Casos ingresados"].sum())
+            st.info(f"En los últimos 12 meses ingresaron **{total_ingresos_12m}** caso(s) al programa.")
 
-            df_asig = df_c.copy()
-            if not df_asig.empty:
-                if sel_asig != "Todas las duplas":
-                    d_sel_asig = sel_asig.split(" (")[0]
-                    df_asig = df_asig[df_asig['Dupla_ID_Asignada'] == d_sel_asig]
-
-                df_asig['Dupla'] = df_asig['Dupla_ID_Asignada'].apply(
-                    lambda d: f"{d} ({duplas_nombres.get(d, '')})" if d in duplas_nombres else str(d)
-                )
-                df_asig['Antigüedad (meses)'] = df_asig['Fecha Ingreso'].apply(
-                    lambda f: (hoy.year - f.year) * 12 + (hoy.month - f.month) - (1 if hoy.day < f.day else 0)
-                )
-                df_asig['Fecha Ingreso'] = df_asig['Fecha Ingreso'].apply(lambda f: f.strftime('%d-%m-%Y'))
-                df_asig = df_asig.sort_values(['Dupla', 'Caso']).reset_index(drop=True)
-                df_asig.insert(0, "N°", range(1, len(df_asig) + 1))
-
-                columnas_asig = [c for c in ["N°", "Caso", "RIT", "codnino", "Dupla", "Fecha Ingreso", "Antigüedad (meses)"] if c in df_asig.columns]
-                st.info(f"Mostrando **{len(df_asig)}** caso(s) asignado(s).")
-                st.dataframe(df_asig[columnas_asig], use_container_width=True, hide_index=True)
-            else:
-                st.caption("Aún no hay casos asignados.")
+            fig_ingresos_mes = px.bar(
+                df_ingresos_mes, x="Mes", y="Casos ingresados", text="Casos ingresados",
+                color_discrete_sequence=[COLOR_VERDE_IRIDEM]
+            )
+            max_ing = max(int(df_ingresos_mes["Casos ingresados"].max()), 1)
+            fig_ingresos_mes.update_traces(textposition="outside", textfont_size=12)
+            fig_ingresos_mes.update_xaxes(categoryorder="array", categoryarray=df_ingresos_mes["Mes"].tolist())
+            fig_ingresos_mes.update_layout(
+                height=380, paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO,
+                xaxis_title="", yaxis_title="N° de casos ingresados", xaxis_tickangle=-45,
+                yaxis=dict(range=[0, max_ing * 1.25], dtick=1 if max_ing <= 10 else None),
+                margin=dict(t=30, b=60)
+            )
+            st.plotly_chart(fig_ingresos_mes, use_container_width=True)
 
             st.divider()
             st.subheader("⏳ Casos en Lista de Espera")
+            _msg_eliminados = st.session_state.pop("msg_le_eliminados", None)
+            if _msg_eliminados:
+                st.success(_msg_eliminados)
             df_le = cargar_lista_espera()
             if not df_le.empty:
                 hoy_le = datetime.now().date()
@@ -1391,6 +1395,44 @@ if not df_c.empty:
                         if cambios:
                             st.success(f"✅ {cambios} registro(s) actualizado(s).")
                             st.rerun()
+
+                # --- Eliminar de la lista de espera (el N° correlativo se recalcula solo al recargar) ---
+                st.divider()
+                st.subheader("🗑️ Eliminar de la Lista de Espera")
+                if 'id' in df_le.columns:
+                    opciones_eliminar = {}
+                    for _, r_del in df_le.iterrows():
+                        partes_nombre = [str(r_del.get(k)).strip() for k in ["Nombres", "Apellido_Paterno", "Apellido_Materno"]
+                                         if pd.notnull(r_del.get(k)) and str(r_del.get(k)).strip()]
+                        nombre_del = " ".join(partes_nombre) if partes_nombre else "Sin nombre"
+                        rit_del = str(r_del.get('RIT')) if pd.notnull(r_del.get('RIT')) else "S/R"
+                        opciones_eliminar[f"N° {r_del['N°']} - {nombre_del} - RIT {rit_del}"] = int(r_del['id'])
+
+                    with st.form("form_eliminar_le", clear_on_submit=True):
+                        sel_eliminar = st.multiselect("Selecciona uno o más niños/as a eliminar", list(opciones_eliminar.keys()))
+                        confirmar_eliminar = st.checkbox("Confirmo que quiero eliminarlos de la lista de espera")
+                        enviar_eliminar = st.form_submit_button("🗑️ Eliminar seleccionados")
+
+                    if enviar_eliminar:
+                        if not sel_eliminar:
+                            st.warning("Selecciona al menos un registro.")
+                        elif not confirmar_eliminar:
+                            st.warning("Marca la casilla de confirmación para poder eliminar.")
+                        else:
+                            eliminados, errores = 0, []
+                            for etiqueta_del in sel_eliminar:
+                                try:
+                                    supabase.table("lista_espera").delete().eq("id", opciones_eliminar[etiqueta_del]).execute()
+                                    eliminados += 1
+                                except Exception as e:
+                                    errores.append(f"{etiqueta_del}: {e}")
+                            for err in errores:
+                                st.error(f"❌ No se pudo eliminar {err}")
+                            if eliminados:
+                                st.session_state.pop("editor_lista_espera", None)  # evita arrastrar ediciones de filas que ya no existen
+                                st.session_state["msg_le_eliminados"] = f"✅ {eliminados} registro(s) eliminado(s). El orden (N°) se actualizó."
+                                st.rerun()
+                    st.caption("Si el niño/a sigue apareciendo en el Excel del SIS, volverá a ingresar a la lista en la próxima carga.")
             else: st.success("No hay casos en lista de espera.")
 
             if st.session_state.user_role in ("admin", "espera"):
