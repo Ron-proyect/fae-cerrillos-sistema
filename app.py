@@ -787,6 +787,9 @@ if st.sidebar.button("🚪 Cerrar Sesión"):
     st.session_state.user_role = None
     st.session_state.user_name = None
     st.session_state.caso_seleccionado = None
+    # Al cambiar de cuenta, el calendario de salas vuelve a abrir en el mes en curso.
+    for _k in ("salas_mes_sel", "salas_mes_sel_user"):
+        st.session_state.pop(_k, None)
     # 2) Se borra la cookie del navegador (si falla el borrado, se sobrescribe con una ya vencida).
     try:
         cookie_manager.delete('fae_login_cookie', key="delete_cookie_logout")
