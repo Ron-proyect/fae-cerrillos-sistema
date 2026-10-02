@@ -619,6 +619,20 @@ def _mes_por_defecto(claves):
     objetivo = hoy.year * 12 + hoy.month
     return min(claves, key=lambda k: abs(_mes_a_num(k) - objetivo))
 
+def _selector_mes(claves, key):
+    """Selector de mes que SIEMPRE abre en el mes en curso, mientras la persona no haya
+    elegido otro mes a mano. Streamlit recuerda el valor de un selector por su 'key'
+    (por ejemplo, 'agosto' de una sesión anterior) y en ese caso ignora el 'index'; por eso
+    aquí el valor se fija directamente en session_state hasta que haya una elección manual."""
+    key_manual = f"{key}_manual"
+
+    def _marcar_manual():
+        st.session_state[key_manual] = True
+
+    if not st.session_state.get(key_manual) or st.session_state.get(key) not in claves:
+        st.session_state[key] = _mes_por_defecto(claves)
+    return st.selectbox("📅 Seleccionar Mes:", options=claves, key=key, on_change=_marcar_manual)
+
 def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
     """Renderiza el módulo completo de gestión de salas dentro del contenedor actual
     (pensado para llamarse dentro de un 'with tab:').
@@ -677,12 +691,7 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
             # Los meses se ordenan cronológicamente y, al abrir la sesión, el selector
             # parte en el mes en curso (o el más cercano si ese mes no tiene planificación).
             claves_admin = sorted(st.session_state.meses_data.keys(), key=_mes_a_num)
-            mes_sel = st.selectbox(
-                "📅 Seleccionar Mes:",
-                options=claves_admin,
-                index=claves_admin.index(_mes_por_defecto(claves_admin)),
-                key="salas_mes_sel"
-            )
+            mes_sel = _selector_mes(claves_admin, "salas_mes_sel")
             m_data = st.session_state.meses_data[mes_sel]
 
             fijado_check = st.checkbox("🔒 Fijar Mes (Bloquear cambios)", value=m_data['fijado'], key="salas_fijado")
@@ -783,9 +792,7 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
         if not claves_disponibles:
             st.info("Todavía no hay una planificación cargada.")
             return
-        mes_default = _mes_por_defecto(claves_disponibles)
-        idx_default = claves_disponibles.index(mes_default)
-        mes_sel = st.selectbox("📅 Seleccionar Mes:", options=claves_disponibles, index=idx_default, key="salas_mes_sel_user")
+        mes_sel = _selector_mes(claves_disponibles, "salas_mes_sel_user")
 
         m_data = st.session_state.meses_data[mes_sel]
         foco_duplas = [dupla_usuario] if dupla_usuario in DUPLAS else []
