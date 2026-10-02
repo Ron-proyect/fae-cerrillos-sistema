@@ -610,6 +610,15 @@ def _mes_a_num(mes_id):
     a, m = mes_id.split("-")
     return int(a) * 12 + int(m)
 
+def _mes_por_defecto(claves):
+    """Devuelve el mes en curso, o el más cercano si no existe, entre ids 'YYYY-MM'."""
+    hoy = datetime.now()
+    mes_actual_id = f"{hoy.year}-{hoy.month:02d}"
+    if mes_actual_id in claves:
+        return mes_actual_id
+    objetivo = hoy.year * 12 + hoy.month
+    return min(claves, key=lambda k: abs(_mes_a_num(k) - objetivo))
+
 def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
     """Renderiza el módulo completo de gestión de salas dentro del contenedor actual
     (pensado para llamarse dentro de un 'with tab:').
@@ -665,7 +674,15 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
                 st.markdown(f"<div class='legend-text' style='color: {COLORES_DUPLAS[id_dupla]}; border-left: 4px solid {COLORES_DUPLAS[id_dupla]};'><b>{id_dupla}:</b> {nombre}{tt_str}</div>", unsafe_allow_html=True)
 
             st.markdown("---")
-            mes_sel = st.selectbox("📅 Seleccionar Mes:", options=list(st.session_state.meses_data.keys()), key="salas_mes_sel")
+            # Los meses se ordenan cronológicamente y, al abrir la sesión, el selector
+            # parte en el mes en curso (o el más cercano si ese mes no tiene planificación).
+            claves_admin = sorted(st.session_state.meses_data.keys(), key=_mes_a_num)
+            mes_sel = st.selectbox(
+                "📅 Seleccionar Mes:",
+                options=claves_admin,
+                index=claves_admin.index(_mes_por_defecto(claves_admin)),
+                key="salas_mes_sel"
+            )
             m_data = st.session_state.meses_data[mes_sel]
 
             fijado_check = st.checkbox("🔒 Fijar Mes (Bloquear cambios)", value=m_data['fijado'], key="salas_fijado")
@@ -762,17 +779,11 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
     # plantilla / iCal.
     # ------------------------------------------------------------------
     else:
-        hoy = datetime.now()
-        mes_actual_id = f"{hoy.year}-{hoy.month:02d}"
         claves_disponibles = sorted(st.session_state.meses_data.keys(), key=_mes_a_num)
         if not claves_disponibles:
             st.info("Todavía no hay una planificación cargada.")
             return
-        if mes_actual_id in claves_disponibles:
-            mes_default = mes_actual_id
-        else:
-            objetivo = hoy.year * 12 + hoy.month
-            mes_default = min(claves_disponibles, key=lambda k: abs(_mes_a_num(k) - objetivo))
+        mes_default = _mes_por_defecto(claves_disponibles)
         idx_default = claves_disponibles.index(mes_default)
         mes_sel = st.selectbox("📅 Seleccionar Mes:", options=claves_disponibles, index=idx_default, key="salas_mes_sel_user")
 
