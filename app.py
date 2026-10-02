@@ -1297,33 +1297,69 @@ if not df_c.empty:
             # --- Casos ingresados por mes (últimos 12 meses) ---
             st.divider()
             st.subheader("📅 Casos Ingresados por Mes (último año)")
-            st.caption("Cantidad de casos que ingresaron al programa cada mes, según su fecha de ingreso.")
+            st.caption("Cantidad de casos que ingresaron al programa cada mes. Elige un mes en la lista o haz clic en su barra para ver los casos.")
 
             nombres_mes_corto = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
             periodo_hoy = pd.Period(hoy, freq="M")
             meses_rango = [periodo_hoy - i for i in range(11, -1, -1)]
-            ingresos_por_mes = pd.to_datetime(df_c['Fecha Ingreso']).dt.to_period("M").value_counts()
+            etiqueta_por_periodo = {p: f"{nombres_mes_corto[p.month - 1]} {p.year}" for p in meses_rango}
+            periodo_por_etiqueta = {v: k for k, v in etiqueta_por_periodo.items()}
+
+            periodos_ingreso = pd.to_datetime(df_c['Fecha Ingreso']).dt.to_period("M")
+            ingresos_por_mes = periodos_ingreso.value_counts()
             df_ingresos_mes = pd.DataFrame([
-                {"Mes": f"{nombres_mes_corto[p.month - 1]} {p.year}", "Casos ingresados": int(ingresos_por_mes.get(p, 0))}
+                {"Mes": etiqueta_por_periodo[p], "Casos ingresados": int(ingresos_por_mes.get(p, 0))}
                 for p in meses_rango
             ])
             total_ingresos_12m = int(df_ingresos_mes["Casos ingresados"].sum())
             st.info(f"En los últimos 12 meses ingresaron **{total_ingresos_12m}** caso(s) al programa.")
 
-            fig_ingresos_mes = px.bar(
-                df_ingresos_mes, x="Mes", y="Casos ingresados", text="Casos ingresados",
-                color_discrete_sequence=[COLOR_VERDE_IRIDEM]
-            )
-            max_ing = max(int(df_ingresos_mes["Casos ingresados"].max()), 1)
-            fig_ingresos_mes.update_traces(textposition="outside", textfont_size=12)
-            fig_ingresos_mes.update_xaxes(categoryorder="array", categoryarray=df_ingresos_mes["Mes"].tolist())
-            fig_ingresos_mes.update_layout(
-                height=380, paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO,
-                xaxis_title="", yaxis_title="N° de casos ingresados", xaxis_tickangle=-45,
-                yaxis=dict(range=[0, max_ing * 1.25], dtick=1 if max_ing <= 10 else None),
-                margin=dict(t=30, b=60)
-            )
-            st.plotly_chart(fig_ingresos_mes, use_container_width=True)
+            # Mes seleccionado (por defecto, el mes actual)
+            if st.session_state.get("sel_mes_ingreso") not in periodo_por_etiqueta:
+                st.session_state["sel_mes_ingreso"] = etiqueta_por_periodo[periodo_hoy]
+
+            col_graf_ingresos, col_lista_ingresos = st.columns([1, 1])
+            with col_graf_ingresos:
+                fig_ingresos_mes = px.bar(
+                    df_ingresos_mes, x="Mes", y="Casos ingresados", text="Casos ingresados",
+                    color_discrete_sequence=[COLOR_VERDE_IRIDEM]
+                )
+                max_ing = max(int(df_ingresos_mes["Casos ingresados"].max()), 1)
+                fig_ingresos_mes.update_traces(textposition="outside", textfont_size=11, width=0.5)
+                fig_ingresos_mes.update_xaxes(categoryorder="array", categoryarray=df_ingresos_mes["Mes"].tolist())
+                fig_ingresos_mes.update_layout(
+                    height=380, paper_bgcolor=COLOR_GRIS_FONDO, plot_bgcolor=COLOR_GRIS_FONDO,
+                    xaxis_title="", yaxis_title="N° de casos", xaxis_tickangle=-45,
+                    yaxis=dict(range=[0, max_ing * 1.25], dtick=1 if max_ing <= 10 else None),
+                    margin=dict(t=50, b=100)
+                )
+                evento_mes = st.plotly_chart(fig_ingresos_mes, use_container_width=True, on_select="rerun", key="grafico_ingresos_mes")
+                if evento_mes and evento_mes.selection and len(evento_mes.selection.points) > 0:
+                    mes_clic = evento_mes.selection.points[0]['x']
+                    # Solo se aplica un clic nuevo, para que la lista desplegable también pueda cambiar el mes.
+                    if mes_clic in periodo_por_etiqueta and mes_clic != st.session_state.get("_ultimo_clic_mes_ingreso"):
+                        st.session_state["_ultimo_clic_mes_ingreso"] = mes_clic
+                        st.session_state["sel_mes_ingreso"] = mes_clic
+                else:
+                    st.session_state["_ultimo_clic_mes_ingreso"] = None
+
+            with col_lista_ingresos:
+                opciones_meses = [etiqueta_por_periodo[p] for p in reversed(meses_rango)]
+                mes_elegido = st.selectbox("Mes de ingreso:", opciones_meses, key="sel_mes_ingreso")
+                df_mes = df_c[periodos_ingreso == periodo_por_etiqueta[mes_elegido]].copy()
+
+                if df_mes.empty:
+                    st.info(f"No ingresaron casos en {mes_elegido}.")
+                else:
+                    df_mes['Dupla'] = df_mes['Dupla_ID_Asignada'].apply(
+                        lambda d: f"{d} ({duplas_nombres.get(d, '')})" if d in duplas_nombres else str(d)
+                    )
+                    df_mes = df_mes.sort_values(['Fecha Ingreso', 'Caso']).reset_index(drop=True)
+                    df_mes['Fecha Ingreso'] = df_mes['Fecha Ingreso'].apply(lambda f: f.strftime('%d-%m-%Y'))
+                    df_mes.insert(0, "N°", range(1, len(df_mes) + 1))
+                    columnas_mes = [c for c in ["N°", "Caso", "RIT", "codnino", "Dupla", "Fecha Ingreso"] if c in df_mes.columns]
+                    st.markdown(f"**{len(df_mes)} caso(s) ingresado(s) en {mes_elegido}**")
+                    st.dataframe(df_mes[columnas_mes], use_container_width=True, hide_index=True)
 
             st.divider()
             st.subheader("⏳ Casos en Lista de Espera")
