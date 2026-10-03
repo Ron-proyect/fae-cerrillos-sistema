@@ -1190,39 +1190,48 @@ if not df_c.empty:
 
             vista_panel = st.session_state.get('vista_panel_global')
 
+            # Cada listado tiene su PROPIO contenedor fijo. Así, al cambiar de un botón a otro, Streamlit
+            # no reutiliza la misma tabla en pantalla con columnas distintas (eso la dejaba en blanco).
+            cont_pend = st.container()
+            cont_larga = st.container()
+            cont_diag = st.container()
+
             if vista_panel == "pendientes":
-                if global_atraso > 0:
-                    st.warning("⚠️ Casos Fuera de Plazo: Todo el equipo")
-                    df_pend_global = pd.DataFrame(detalles_pendientes_global)
-                    df_pend_global = df_pend_global.sort_values(by="Venc. (3m)", ascending=True).reset_index(drop=True)
-                    df_pend_global['Venc. (3m)'] = pd.to_datetime(df_pend_global['Venc. (3m)']).dt.strftime('%d-%m-%Y')
-                    st.dataframe(df_pend_global, use_container_width=True, hide_index=True)
-                else:
-                    st.success("No hay informes pendientes: todos los casos están dentro del plazo.")
+                with cont_pend:
+                    if global_atraso > 0:
+                        st.warning("⚠️ Casos Fuera de Plazo: Todo el equipo")
+                        df_pend_global = pd.DataFrame(detalles_pendientes_global)
+                        df_pend_global = df_pend_global.sort_values(by="Venc. (3m)", ascending=True).reset_index(drop=True)
+                        df_pend_global['Venc. (3m)'] = pd.to_datetime(df_pend_global['Venc. (3m)']).dt.strftime('%d-%m-%Y')
+                        st.dataframe(df_pend_global, use_container_width=True, hide_index=True)
+                    else:
+                        st.success("No hay informes pendientes: todos los casos están dentro del plazo.")
 
             elif vista_panel == "larga":
-                if casos_mas_18m:
-                    st.warning(f"⏱️ Largas permanencias (más de 18 meses): {len(casos_mas_18m)} caso(s)")
-                    df_mas_18 = pd.DataFrame(casos_mas_18m).sort_values(
-                        by=["Meses de permanencia", "Fecha Ingreso"], ascending=[False, True]
-                    ).reset_index(drop=True)
-                    df_mas_18['Fecha Ingreso'] = pd.to_datetime(df_mas_18['Fecha Ingreso']).dt.strftime('%d-%m-%Y')
-                    df_mas_18.insert(0, "N°", range(1, len(df_mas_18) + 1))
-                    st.dataframe(df_mas_18, use_container_width=True, hide_index=True)
-                else:
-                    st.info("No hay casos en largas permanencias (más de 18 meses).")
+                with cont_larga:
+                    if casos_mas_18m:
+                        st.warning(f"⏱️ Largas permanencias (más de 18 meses): {len(casos_mas_18m)} caso(s)")
+                        df_mas_18 = pd.DataFrame(casos_mas_18m).sort_values(
+                            by=["Meses de permanencia", "Fecha Ingreso"], ascending=[False, True]
+                        ).reset_index(drop=True)
+                        df_mas_18['Fecha Ingreso'] = pd.to_datetime(df_mas_18['Fecha Ingreso']).dt.strftime('%d-%m-%Y')
+                        df_mas_18.insert(0, "N°", range(1, len(df_mas_18) + 1))
+                        st.dataframe(df_mas_18, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("No hay casos en largas permanencias (más de 18 meses).")
 
             elif vista_panel == "diagnostico":
-                if casos_diagnostico:
-                    st.info(f"🩺 Casos en evaluación diagnóstica (90 días o menos en el programa): {len(casos_diagnostico)} caso(s)")
-                    df_diag = pd.DataFrame(casos_diagnostico).sort_values(
-                        by=["Fecha Ingreso"], ascending=True
-                    ).reset_index(drop=True)
-                    df_diag['Fecha Ingreso'] = pd.to_datetime(df_diag['Fecha Ingreso']).dt.strftime('%d-%m-%Y')
-                    df_diag.insert(0, "N°", range(1, len(df_diag) + 1))
-                    st.dataframe(df_diag, use_container_width=True, hide_index=True)
-                else:
-                    st.info("No hay casos en evaluación diagnóstica (90 días o menos en el programa).")
+                with cont_diag:
+                    if casos_diagnostico:
+                        st.info(f"🩺 Casos en evaluación diagnóstica (90 días o menos en el programa): {len(casos_diagnostico)} caso(s)")
+                        df_diag = pd.DataFrame(casos_diagnostico).sort_values(
+                            by=["Fecha Ingreso"], ascending=True
+                        ).reset_index(drop=True)
+                        df_diag['Fecha Ingreso'] = pd.to_datetime(df_diag['Fecha Ingreso']).dt.strftime('%d-%m-%Y')
+                        df_diag.insert(0, "N°", range(1, len(df_diag) + 1))
+                        st.dataframe(df_diag, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("No hay casos en evaluación diagnóstica (90 días o menos en el programa).")
 
             st.divider()
             col_g1, col_g2 = st.columns([2, 1])
