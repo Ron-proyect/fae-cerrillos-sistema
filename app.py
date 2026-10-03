@@ -64,6 +64,24 @@ DUPLAS_MAPA_INICIAL = {
     "Dupla 7": "Solange Alegría-Francisco Carvajal"
 }
 
+# Directorio de contactos que se muestra en la barra lateral (visible para todos los usuarios).
+# Para agregar o corregir un número, basta con editar estos datos.
+CONTACTOS_PROGRAMA = [
+    ("Dirección", "+56 9 6878 2881"),
+    ("Teléfono fijo del programa", "32 366 3578"),
+    ("Psicóloga de enlace FAE Cerrillos, Mariana Guerra", "+56 9 6125 1162"),
+]
+# Teléfonos de las duplas (por ID de dupla). Las duplas sin número aún no se muestran.
+CONTACTOS_DUPLAS = {
+    "Dupla 1": "",
+    "Dupla 2": "+56 9 5812 9373",
+    "Dupla 3": "+56 9 5888 4350",
+    "Dupla 4": "",
+    "Dupla 5": "+56 9 6856 2112",
+    "Dupla 6": "+56 9 6860 5074",
+    "Dupla 7": "+56 9 6878 4608",
+}
+
 NOMBRES_TABLA = [
     "Evaluación", "Avances 1", "Avances 2", "Avances 3", "Avances 4", 
     "Avances 5", "Avances 6", "Avances 7", "Avances 8", "Avances 9", 
@@ -781,6 +799,16 @@ if st.session_state.user_role in ("admin", "espera"):
                 st.error(f"Error: {e}")
 
 st.sidebar.divider()
+with st.sidebar.expander("📞 Directorio de contactos", expanded=False):
+    st.markdown("**Programa**")
+    for etiqueta_ct, numero_ct in CONTACTOS_PROGRAMA:
+        st.markdown(f"{etiqueta_ct}  \n`{numero_ct}`")
+    st.markdown("**Duplas**")
+    for d_ct in [f"Dupla {i}" for i in range(1, 8)]:
+        numero_d = CONTACTOS_DUPLAS.get(d_ct, "")
+        if numero_d:
+            st.markdown(f"{d_ct} · {duplas_nombres.get(d_ct, '')}  \n`{numero_d}`")
+
 if st.sidebar.button("🚪 Cerrar Sesión"):
     # 1) Se activa la bandera ANTES de tocar la cookie: así, aunque el navegador tarde en borrarla,
     #    el auto-login de arriba queda bloqueado y se muestra la pantalla de acceso.
