@@ -910,9 +910,35 @@ if not df_c.empty:
                         legend=dict(yanchor="top", y=0.4, xanchor="left", x=1.05)
                     )
                 
-                    evento_clic = st.plotly_chart(fig_barras, use_container_width=True, on_select="rerun", key="grafico_barras_ind")
-                    if evento_clic and evento_clic.selection and len(evento_clic.selection.points) > 0:
-                        st.session_state.caso_seleccionado = evento_clic.selection.points[0]['x']
+                    # Las barras seleccionadas quedan resaltadas y el resto se atenúa (modo enfoque)
+                    fig_barras.update_traces(
+                        selected=dict(marker=dict(opacity=1)),
+                        unselected=dict(marker=dict(opacity=0.25))
+                    )
+                    st.caption("💡 Haz clic en una barra para ver su caso. Con Shift + clic (o la herramienta de selección del gráfico) puedes marcar más barras para compararlas: solo la primera que marques muestra los datos del caso; las demás son solo para visualizar.")
+                    evento_clic = st.plotly_chart(fig_barras, use_container_width=True, on_select="rerun", key=f"grafico_barras_ind_{dupla_sel_id}")
+
+                    casos_dupla_vista = set(df_c_filtrado['Caso'])
+                    sel_actual = []
+                    if evento_clic and evento_clic.selection:
+                        for pt in evento_clic.selection.points:
+                            caso_pt = pt.get('x')
+                            if caso_pt in casos_dupla_vista and caso_pt not in sel_actual:
+                                sel_actual.append(caso_pt)
+                    # Se recuerda el ORDEN en que se fueron marcando las barras: la primera manda.
+                    orden_prev = st.session_state.get('orden_barras_ind', [])
+                    orden_barras = [c for c in orden_prev if c in sel_actual] + [c for c in sel_actual if c not in orden_prev]
+                    st.session_state.orden_barras_ind = orden_barras
+                    if orden_barras:
+                        primero_barras = orden_barras[0]
+                        # Solo se aplica cuando cambia la primera barra, para que la lista desplegable de casos siga pudiendo cambiar el caso
+                        if primero_barras != st.session_state.get('_ultimo_primero_barras_ind'):
+                            st.session_state['_ultimo_primero_barras_ind'] = primero_barras
+                            st.session_state.caso_seleccionado = primero_barras
+                        if len(orden_barras) > 1:
+                            st.caption(f"🔎 Enfoque: {', '.join(orden_barras)}. Los datos del caso que se muestran abajo corresponden a «{primero_barras}».")
+                    else:
+                        st.session_state['_ultimo_primero_barras_ind'] = None
 
                 cumple_count = sum(1 for d in data_grafico_barras if d['Días'] <= 90)
                 no_cumple_count = len(data_grafico_barras) - cumple_count
@@ -1120,23 +1146,12 @@ if not df_c.empty:
             c2.metric("Cumplimiento Global", f"{(global_cumple/(global_cumple + global_atraso))*100:.1f}%" if (global_cumple + global_atraso) > 0 else "0%")
             c3.metric("Casos Fuera de Plazo", global_atraso)
 
-            if global_atraso > 0:
-                st.markdown('<div class="gray-container">', unsafe_allow_html=True)
-                if st.button(f"⚠️ Ver {global_atraso} Informes Pendientes (Todo el equipo)", use_container_width=True, key="btn_pendientes_global"):
-                    st.session_state.ver_pendientes_global = not st.session_state.get('ver_pendientes_global', False)
-                st.markdown('</div>', unsafe_allow_html=True)
-
-            if st.session_state.get('ver_pendientes_global', False) and global_atraso > 0:
-                st.warning("⚠️ Casos Fuera de Plazo: Todo el equipo")
-                df_pend_global = pd.DataFrame(detalles_pendientes_global)
-                df_pend_global = df_pend_global.sort_values(by="Venc. (3m)", ascending=True).reset_index(drop=True)
-                df_pend_global['Venc. (3m)'] = pd.to_datetime(df_pend_global['Venc. (3m)']).dt.strftime('%d-%m-%Y')
-                st.dataframe(df_pend_global, use_container_width=True, hide_index=True)
-
-            # --- Casos con más de 18 meses de permanencia ---
+            # --- Listados rápidos: informes pendientes / largas permanencias / evaluación diagnóstica ---
             casos_mas_18m = []
+            casos_diagnostico = []
             for r_perm in resumen_global_maestro:
                 f_ing_perm = r_perm["Fecha Ingreso"]
+                dias_perm = (hoy - f_ing_perm).days
                 if (pd.to_datetime(f_ing_perm) + pd.DateOffset(months=18)).date() < hoy:
                     meses_perm = r_perm["Meses"]
                     anios_perm, meses_resto = divmod(meses_perm, 12)
@@ -1151,14 +1166,42 @@ if not df_c.empty:
                         "Meses de permanencia": meses_perm,
                         "Permanencia": " y ".join(partes_perm) if partes_perm else "0 meses",
                     })
+                if dias_perm <= 90:
+                    casos_diagnostico.append({
+                        "Caso": r_perm["Caso"], "RIT": r_perm["RIT"], "Dupla": r_perm["Dupla_Label"],
+                        "Fecha Ingreso": f_ing_perm,
+                        "Días en el programa": dias_perm,
+                        "Días para completar evaluación": 90 - dias_perm,
+                    })
 
-            if casos_mas_18m:
-                st.markdown('<div class="gray-container">', unsafe_allow_html=True)
-                if st.button(f"⏱️ Largas permanencias ({len(casos_mas_18m)})", use_container_width=True, key="btn_mas_18_global"):
-                    st.session_state.ver_mas_18_global = not st.session_state.get('ver_mas_18_global', False)
-                st.markdown('</div>', unsafe_allow_html=True)
+            col_v1, col_v2, col_v3 = st.columns(3)
+            botones_vista = [
+                (col_v1, "pendientes", f"⚠️ Informes pendientes ({global_atraso})", "btn_vista_pendientes"),
+                (col_v2, "larga", f"⏱️ Largas permanencias ({len(casos_mas_18m)})", "btn_vista_larga"),
+                (col_v3, "diagnostico", f"🩺 Evaluación diagnóstica ({len(casos_diagnostico)})", "btn_vista_diagnostico"),
+            ]
+            for col_v, clave_v, etiqueta_v, key_v in botones_vista:
+                with col_v:
+                    st.markdown('<div class="gray-container">', unsafe_allow_html=True)
+                    if st.button(etiqueta_v, use_container_width=True, key=key_v):
+                        # Un segundo clic en el mismo botón oculta el listado
+                        st.session_state.vista_panel_global = None if st.session_state.get('vista_panel_global') == clave_v else clave_v
+                    st.markdown('</div>', unsafe_allow_html=True)
 
-                if st.session_state.get('ver_mas_18_global', False):
+            vista_panel = st.session_state.get('vista_panel_global')
+
+            if vista_panel == "pendientes":
+                if global_atraso > 0:
+                    st.warning("⚠️ Casos Fuera de Plazo: Todo el equipo")
+                    df_pend_global = pd.DataFrame(detalles_pendientes_global)
+                    df_pend_global = df_pend_global.sort_values(by="Venc. (3m)", ascending=True).reset_index(drop=True)
+                    df_pend_global['Venc. (3m)'] = pd.to_datetime(df_pend_global['Venc. (3m)']).dt.strftime('%d-%m-%Y')
+                    st.dataframe(df_pend_global, use_container_width=True, hide_index=True)
+                else:
+                    st.success("No hay informes pendientes: todos los casos están dentro del plazo.")
+
+            elif vista_panel == "larga":
+                if casos_mas_18m:
                     st.warning(f"⏱️ Largas permanencias (más de 18 meses): {len(casos_mas_18m)} caso(s)")
                     df_mas_18 = pd.DataFrame(casos_mas_18m).sort_values(
                         by=["Meses de permanencia", "Fecha Ingreso"], ascending=[False, True]
@@ -1166,8 +1209,20 @@ if not df_c.empty:
                     df_mas_18['Fecha Ingreso'] = pd.to_datetime(df_mas_18['Fecha Ingreso']).dt.strftime('%d-%m-%Y')
                     df_mas_18.insert(0, "N°", range(1, len(df_mas_18) + 1))
                     st.dataframe(df_mas_18, use_container_width=True, hide_index=True)
-            else:
-                st.caption("No hay casos en largas permanencias (más de 18 meses).")
+                else:
+                    st.info("No hay casos en largas permanencias (más de 18 meses).")
+
+            elif vista_panel == "diagnostico":
+                if casos_diagnostico:
+                    st.info(f"🩺 Casos en evaluación diagnóstica (90 días o menos en el programa): {len(casos_diagnostico)} caso(s)")
+                    df_diag = pd.DataFrame(casos_diagnostico).sort_values(
+                        by=["Fecha Ingreso"], ascending=True
+                    ).reset_index(drop=True)
+                    df_diag['Fecha Ingreso'] = pd.to_datetime(df_diag['Fecha Ingreso']).dt.strftime('%d-%m-%Y')
+                    df_diag.insert(0, "N°", range(1, len(df_diag) + 1))
+                    st.dataframe(df_diag, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No hay casos en evaluación diagnóstica (90 días o menos en el programa).")
 
             st.divider()
             col_g1, col_g2 = st.columns([2, 1])
