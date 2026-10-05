@@ -44,7 +44,7 @@ SIS_HTML_FILE = "analitica_sis.html"
 
 CREDENTIALS = {
     "admin": {"pass": "cerrillos2026", "role": "admin", "name": "Administrador"},
-    "bruno.diaz": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 1"},
+    "bruno.ignacia": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 1"},
     "daniela.paula": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 2"},
     "francisca.tiare": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 3"},
     "laura.alan": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 4"},
@@ -55,7 +55,7 @@ CREDENTIALS = {
 }
 
 DUPLAS_MAPA_INICIAL = {
-    "Dupla 1": "Bruno Diaz-Casandra Mora",
+    "Dupla 1": "Bruno Diaz-Ignacia Ahumada",
     "Dupla 2": "Daniela Izquierdo-Paula Leyton",
     "Dupla 3": "Francisca Salazar-Tiare Riquelme",
     "Dupla 4": "Laura Arancibia-Alan Zamora",
@@ -73,7 +73,7 @@ CONTACTOS_PROGRAMA = [
 ]
 # Teléfonos de las duplas (por ID de dupla). Las duplas sin número aún no se muestran.
 CONTACTOS_DUPLAS = {
-    "Dupla 1": "",
+    "Dupla 1": "+56 9 6139 4005",
     "Dupla 2": "+56 9 5812 9373",
     "Dupla 3": "+56 9 5888 4350",
     "Dupla 4": "",
