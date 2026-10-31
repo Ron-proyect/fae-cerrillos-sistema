@@ -13,7 +13,6 @@ import unicodedata
 import streamlit.components.v1 as components
 from docxtpl import DocxTemplate
 import zipfile
-import json
 import extra_streamlit_components as stx
 from gestion_salas import render_gestion_salas
 from lista_espera import cargar_lista_espera, render_carga_lista_espera, render_lista_espera
@@ -416,109 +415,6 @@ def generar_pdf_cronograma(caso_nombre, f_ingreso, df_hitos):
         pdf.cell(anchos[5], 8, vig_limpio, border=1, align="C")
         pdf.ln()
     return bytes(pdf.output())
-
-# ==============================================================================
-# --- INTEGRACIÓN CON LA ANALÍTICA SIS ---
-# La analítica (analitica_sis.html) corre aislada dentro de la página, así que no ve los datos
-# de la app. Aquí se arma la configuración (duplas, integrantes y casos asignados) y se inyecta
-# en el HTML justo antes de mostrarlo. El archivo analitica_sis.html NO se modifica.
-# ==============================================================================
-def construir_config_analitica(df_casos, nombres_duplas):
-    """Devuelve {nombre_equipo: {p1, p2, keys, nnasFijos}} con el mismo formato que usa la analítica."""
-    config = {}
-    for d_id in [f"Dupla {i}" for i in range(1, 8)]:
-        integrantes = nombres_duplas.get(d_id, "") or ""
-        partes = [p.strip() for p in integrantes.split("-") if p.strip()]
-        p1 = partes[0].split()[0].upper() if partes else d_id.upper()
-        p2 = partes[1].split()[0].upper() if len(partes) > 1 else "S/N"
-
-        # Palabras clave para reconocer al profesional en el Excel del SIS: primer nombre y apellido.
-        keys = []
-        for p in partes:
-            tokens = p.split()
-            if tokens:
-                keys.append(tokens[0].upper())
-            if len(tokens) > 1:
-                keys.append(tokens[-1].upper())
-
-        casos = []
-        if df_casos is not None and not df_casos.empty and "Dupla_ID_Asignada" in df_casos.columns:
-            casos = (
-                df_casos[df_casos["Dupla_ID_Asignada"] == d_id]["Caso"]
-                .astype(str).str.strip().str.upper().tolist()
-            )
-
-        nombres_etiqueta = [x for x in [p1, p2] if x != "S/N" and x != d_id.upper()]
-        etiqueta = f"{d_id.upper()} ({' - '.join(nombres_etiqueta)})" if nombres_etiqueta else d_id.upper()
-        config[etiqueta] = {"p1": p1, "p2": p2, "keys": keys, "nnasFijos": casos}
-    return config
-
-SCRIPT_SYNC_ANALITICA = r"""
-<script>
-(function () {
-    const CFG = __CONFIG__;
-
-    // 1) Las duplas, los profesionales y los casos vienen de la app (tienen prioridad sobre lo guardado en el navegador).
-    DUPLAS_INFO = CFG;
-
-    // 2) Los nombres de los casos en la app pueden estar escritos distinto que en el Excel del SIS
-    //    (orden, tildes, segundo nombre). Antes de generar el reporte se empareja cada fila del Excel
-    //    con el caso de la app, comparando las palabras sin tildes ni orden.
-    const norm = s => (s || '').toString().toUpperCase().normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
-
-    const casos = [];
-    Object.keys(CFG).forEach(d => (CFG[d].nnasFijos || []).forEach(n => casos.push({ nombre: n, tokens: new Set(norm(n)) })));
-
-    function buscarCaso(clave) {
-        const ts = new Set(norm(clave));
-        if (ts.size < 2) return null;
-        const candidatos = casos.filter(c => {
-            const chico = c.tokens.size <= ts.size ? c.tokens : ts;
-            const grande = chico === c.tokens ? ts : c.tokens;
-            if (chico.size < 2) return false;
-            for (const x of chico) if (!grande.has(x)) return false;
-            return true;
-        });
-        return candidatos.length === 1 ? candidatos[0].nombre : null;   // si es ambiguo, no se toca
-    }
-
-    function buscarClave(obj, nombre) {
-        return Object.keys(obj).find(k => k.toLowerCase().replace(/_/g, '') === nombre) || null;
-    }
-
-    const renderOriginal = renderizarReporte;
-    renderizarReporte = function (datos) {
-        datos.forEach(f => {
-            const kAp = buscarClave(f, 'apellidopaterno');
-            const kNo = buscarClave(f, 'nombres');
-            const clave = `${kAp ? f[kAp] : ''} ${kNo ? f[kNo] : ''}`.trim();
-            const caso = buscarCaso(clave);
-            if (caso) {
-                f[kAp || 'apellidopaterno'] = caso;
-                if (kNo) f[kNo] = '';
-            }
-        });
-        return renderOriginal(datos);
-    };
-
-    // 3) El botón de configuración manual ya no hace falta: todo viene de la app.
-    document.querySelectorAll('button[onclick="abrirConfigDuplas()"]').forEach(b => {
-        b.disabled = true;
-        b.style.cursor = 'default';
-        b.textContent = '✅ Duplas y casos sincronizados con la app';
-    });
-})();
-</script>
-"""
-
-def preparar_html_analitica(html, config):
-    """Inserta la configuración de duplas/casos en el HTML de la analítica."""
-    config_json = json.dumps(config, ensure_ascii=False).replace("</", "<\\/")
-    script = SCRIPT_SYNC_ANALITICA.replace("__CONFIG__", config_json)
-    if "</body>" in html:
-        return html.replace("</body>", script + "</body>", 1)
-    return html + script
 
 if st.session_state.user_role == "admin":
     st.sidebar.markdown("## 🗂️ Menú de Gestión")
@@ -1415,15 +1311,11 @@ if not df_c.empty:
     if st.session_state.user_role == "admin":
         with tab_sis:
             st.link_button("📊 Abrir Analítica SIS (versión completa)", "https://gestion-fae.richardronck.workers.dev/", use_container_width=True)
-            st.caption("Se abre en una pestaña nueva (esa versión no está conectada a la app). Abajo se muestra la versión integrada, que usa las duplas y los casos asignados de este dashboard.")
+            st.caption("Se abre en una pestaña nueva. Abajo se muestra la versión integrada en este dashboard, si está disponible.")
             st.divider()
             if os.path.exists(SIS_HTML_FILE):
-                config_analitica = construir_config_analitica(df_c, duplas_nombres)
-                total_casos_sync = sum(len(v["nnasFijos"]) for v in config_analitica.values())
-                st.info(f"🔗 Sincronizado con la app: {total_casos_sync} casos asignados en {len(config_analitica)} duplas. Sube el Excel del SIS y genera el reporte.")
                 with open(SIS_HTML_FILE, 'r', encoding='utf-8') as f:
-                    html_sis = f.read()
-                components.html(preparar_html_analitica(html_sis, config_analitica), height=1200, scrolling=True)
+                    components.html(f.read(), height=1200, scrolling=True)
             else: st.warning("Archivo de analítica no encontrado.")
 
     if st.session_state.user_role != "espera":
