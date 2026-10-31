@@ -306,8 +306,18 @@ def _render_tabla_lista_espera(supabase, df_le, total_casos_programa, hoy):
         cols_le.insert(cols_le.index('FechaNacimiento') + 1, 'Edad')
     df_le = df_le[cols_le]
 
+    # Orden de la lista: quien lleva MÁS días en espera va primero (N° 1) y el ingreso más reciente al final.
+    # Si dos niños/as llevan los mismos días, se desempata por 'id' (el que se cargó antes va primero).
+    # Los que no tienen fecha de ingreso a la lista quedan al final.
+    df_le['_dias_orden'] = pd.to_numeric(df_le['Días en Lista de Espera'], errors='coerce')
+    columnas_orden = ['_dias_orden'] + (['id'] if 'id' in df_le.columns else [])
+    df_le = (
+        df_le.sort_values(columnas_orden, ascending=[False] + [True] * (len(columnas_orden) - 1), na_position='last')
+        .drop(columns=['_dias_orden'])
+        .reset_index(drop=True)
+    )
+
     # N° correlativo (siempre de 1 a N). El id real sigue existiendo pero se oculta más abajo.
-    df_le = df_le.sort_values('id').reset_index(drop=True) if 'id' in df_le.columns else df_le.reset_index(drop=True)
     df_le.insert(0, "N°", range(1, len(df_le) + 1))
 
     for col_acc in COLS_ACCIONES:
