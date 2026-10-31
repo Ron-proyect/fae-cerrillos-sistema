@@ -1261,7 +1261,8 @@ if not df_c.empty:
                     df_lista_simple.to_excel(writer, index=False, sheet_name='Lista_Simple')
                 st.download_button("📋 Descargar Lista Simple (Excel)", output_simple.getvalue(), "Lista_Simple_FAE.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-      if st.session_state.user_role in ("admin", "espera"):
+    # --- CORRECCIÓN: este bloque estaba con 6 espacios; ahora está a 4, igual que sus bloques hermanos ---
+    if st.session_state.user_role in ("admin", "espera"):
         with tab_espera:
             try:
                 render_lista_espera(supabase, df_c, duplas_nombres, hoy)
