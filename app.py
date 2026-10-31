@@ -76,7 +76,7 @@ CONTACTOS_DUPLAS = {
     "Dupla 1": "+56 9 6139 4005",
     "Dupla 2": "+56 9 5812 9373",
     "Dupla 3": "+56 9 5888 4350",
-    "Dupla 4": "+56 9 6860 3001",
+    "Dupla 4": "",
     "Dupla 5": "+56 9 6856 2112",
     "Dupla 6": "+56 9 6860 5074",
     "Dupla 7": "+56 9 6878 4608",
@@ -998,6 +998,7 @@ if not df_c.empty:
             data_profesionales = []
             resumen_global_maestro = []
             detalles_pendientes_global = []
+            casos_a_enviar_mes = []
 
             for d_id in [f"Dupla {i}" for i in range(1, 8)]:
                 integrantes_d = duplas_nombres.get(d_id, "")
@@ -1014,14 +1015,34 @@ if not df_c.empty:
                     m_ant = (hoy.year - f_ing_c.year) * 12 + (hoy.month - f_ing_c.month)
                     if hoy.day < f_ing_c.day: m_ant -= 1
                     
+                    # Próximo informe y fecha de vencimiento (se calculan para TODOS los casos)
+                    venc_op_g = (pd.to_datetime(f_ref) + pd.DateOffset(months=3)).date()
+                    entregados_lista_g = envios_c['Informe'].tolist()
+                    idx_proximo_g = max([NOMBRES_TABLA.index(inf) for inf in entregados_lista_g if inf in NOMBRES_TABLA]) + 1 if entregados_lista_g else 0
+                    proximo_inf_g = NOMBRES_TABLA[idx_proximo_g] if idx_proximo_g < len(NOMBRES_TABLA) else "-"
+
+                    # Informes que vencen en el mes actual
+                    if proximo_inf_g != "-" and venc_op_g.year == hoy.year and venc_op_g.month == hoy.month:
+                        dias_para_venc = (venc_op_g - hoy).days
+                        if dias_para_venc < 0:
+                            estado_mes = f"🔴 Venció hace {abs(dias_para_venc)} días"
+                        elif dias_para_venc == 0:
+                            estado_mes = "🟠 Vence hoy"
+                        else:
+                            estado_mes = f"🟢 Faltan {dias_para_venc} días"
+                        casos_a_enviar_mes.append({
+                            "Caso": c,
+                            "RIT": df_c[df_c['Caso'] == c].iloc[0]['RIT'],
+                            "Dupla": dupla_etiqueta_g.replace("\n", " "),
+                            "Próximo Informe": proximo_inf_g,
+                            "Venc. (3m)": venc_op_g,
+                            "Estado": estado_mes,
+                        })
+
                     if (hoy - f_ref).days <= 90:
                         p_cumple += 1
                     else:
                         p_atraso += 1
-                        venc_op_g = (pd.to_datetime(f_ref) + pd.DateOffset(months=3)).date()
-                        entregados_lista_g = envios_c['Informe'].tolist()
-                        idx_proximo_g = max([NOMBRES_TABLA.index(inf) for inf in entregados_lista_g if inf in NOMBRES_TABLA]) + 1 if entregados_lista_g else 0
-                        proximo_inf_g = NOMBRES_TABLA[idx_proximo_g] if idx_proximo_g < len(NOMBRES_TABLA) else "-"
                         detalles_pendientes_global.append({
                             "Caso": c,
                             "RIT": df_c[df_c['Caso'] == c].iloc[0]['RIT'],
@@ -1081,11 +1102,12 @@ if not df_c.empty:
                         "Días para completar evaluación": 90 - dias_perm,
                     })
 
-            col_v1, col_v2, col_v3 = st.columns(3)
+            col_v1, col_v2, col_v3, col_v4 = st.columns(4)
             botones_vista = [
                 (col_v1, "pendientes", f"⚠️ Informes pendientes ({global_atraso})", "btn_vista_pendientes"),
                 (col_v2, "larga", f"⏱️ Largas permanencias ({len(casos_mas_18m)})", "btn_vista_larga"),
                 (col_v3, "diagnostico", f"🩺 Evaluación diagnóstica ({len(casos_diagnostico)})", "btn_vista_diagnostico"),
+                (col_v4, "mes", f"📅 Informes a enviar este mes ({len(casos_a_enviar_mes)})", "btn_vista_mes"),
             ]
             for col_v, clave_v, etiqueta_v, key_v in botones_vista:
                 with col_v:
@@ -1102,6 +1124,7 @@ if not df_c.empty:
             cont_pend = st.container()
             cont_larga = st.container()
             cont_diag = st.container()
+            cont_mes = st.container()
 
             if vista_panel == "pendientes":
                 with cont_pend:
@@ -1139,6 +1162,22 @@ if not df_c.empty:
                         st.dataframe(df_diag, use_container_width=True, hide_index=True)
                     else:
                         st.info("No hay casos en evaluación diagnóstica (90 días o menos en el programa).")
+
+            elif vista_panel == "mes":
+                with cont_mes:
+                    meses_es = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+                                "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+                    nombre_mes_actual = f"{meses_es[hoy.month - 1]} {hoy.year}"
+                    if casos_a_enviar_mes:
+                        st.info(f"📅 Informes a enviar en {nombre_mes_actual}: {len(casos_a_enviar_mes)} caso(s)")
+                        df_mes = pd.DataFrame(casos_a_enviar_mes).sort_values(
+                            by=["Venc. (3m)", "Caso"], ascending=[True, True]
+                        ).reset_index(drop=True)
+                        df_mes['Venc. (3m)'] = pd.to_datetime(df_mes['Venc. (3m)']).dt.strftime('%d-%m-%Y')
+                        df_mes.insert(0, "N°", range(1, len(df_mes) + 1))
+                        st.dataframe(df_mes, use_container_width=True, hide_index=True)
+                    else:
+                        st.success(f"No hay informes que venzan en {nombre_mes_actual}.")
 
             st.divider()
             col_g1, col_g2 = st.columns([2, 1])
