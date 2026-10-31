@@ -52,6 +52,13 @@
         th { background: #eee; height: 14px; font-size: 7px; font-weight: bold; }
         
         .col-nna { width: 130px; text-align: left !important; padding-left: 5px; font-weight: bold; white-space: normal; font-size: 7px; line-height: 8px; }
+        .col-nna-te { width: 110px; text-align: left !important; padding-left: 5px; font-weight: bold; white-space: normal; font-size: 8.5px; line-height: 11px; vertical-align: top; }
+        .nna-total-sub { display: block; font-weight: normal; color: #5D6D7E; font-size: 7.5px; margin-top: 2px; }
+        .col-cant-te { width: 40px; font-weight: bold; }
+        .col-tipo-te { width: auto; text-align: left !important; padding-left: 5px; font-size: 7px; }
+        .tipo-negrita { font-weight: bold; color: #1a1a1a; }
+        .col-fechas-te { width: 130px; text-align: left !important; padding-left: 5px; color: #5D6D7E; }
+        .col-prof-te { width: 60px; text-align: left !important; padding-left: 5px; font-weight: bold; font-size: 6.5px; }
         
         .celda-activa { background: #eef9bf !important; color: var(--azul); font-weight: bold; }
         .celda-registro { background: #e3f2fd !important; color: #1976d2; font-weight: bold; }
@@ -101,8 +108,32 @@
         <h1>📊 Analítica FAE: Reporte Institucional</h1>
         <input type="file" id="inputExcel" accept=".xlsx, .xls">
         <br><br>
-        <button onclick="procesarArchivo()">GENERAR REPORTE</button>
+        <button onclick="procesarArchivo()">GENERA REPORTE</button>
         <button class="btn-green" onclick="exportarPDFSeparados()">GUARDAR TODOS LOS PDF (AUTOMÁTICO)</button>
+        <button style="background:#5D6D7E; color:white;" onclick="abrirConfigDuplas()">🛠️ Configurar Duplas y Casos NNA</button>
+        <br><br>
+        <label style="font-size:0.95em;">
+            <input type="checkbox" id="chkIncluirTipoEvento" checked>
+            Incluir "8. Detalle de Tipos de Evento por NNA" en el reporte
+        </label>
+    </div>
+
+    <div id="modalConfigDuplas" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:1000; overflow-y:auto;">
+        <div style="background:white; max-width:800px; margin:40px auto; padding:25px; border-radius:8px; max-height:85vh; overflow-y:auto;">
+            <h2 style="margin-top:0;">🛠️ Configuración de Profesionales y Casos NNA por Dupla</h2>
+            <p style="font-size:0.9em; color:#555;">
+                Configura los nombres, palabras clave y los <b>NNA predeterminados</b>. Si ya generaste un reporte con un Excel, puedes usar el botón de abajo para cargarlos automáticamente.
+            </p>
+            <div style="margin-bottom: 15px;">
+                <button type="button" onclick="cargarUltimosCasosAlModal()" style="background: #2980b9; color: white; font-size: 12px;">📥 Predeterminar con los casos del último reporte</button>
+            </div>
+            <div id="filasConfigDuplas"></div>
+            <button type="button" onclick="agregarFilaDupla()">+ Agregar Dupla</button>
+            <hr>
+            <button type="button" onclick="guardarConfigDuplas()" style="background:#A6CE39; font-weight:bold;">💾 Guardar y Aplicar</button>
+            <button type="button" onclick="cerrarConfigDuplas()">Cancelar</button>
+            <div id="msgConfigDuplas" style="margin-top:10px; font-weight:bold;"></div>
+        </div>
     </div>
 
     <div id="reporte-pdf-container">
@@ -112,26 +143,119 @@
     <script>
         Chart.register(ChartDataLabels);
 
-        const DUPLAS_INFO = {
-            "TIARE - FRANCISCA": { p1: "TIARE", p2: "FRANCISCA", keys: ["TIARE", "RIQUELME", "FRANCISCA", "SALAZAR"] },
-            "MARIA - MARCELO": { p1: "MARIA", p2: "MARCELO", keys: ["MARIA", "CORREA", "MARCELO", "HUENTO"] },
-            "SOLANGE - FRANCISCO": { p1: "SOLANGE", p2: "FRANCISCO", keys: ["SOLANGE", "ALEGRIA", "ALEGRÍA", "FRANCISCO", "CARVAJAL"] },
-            "TAMARA - LAURA": { p1: "TAMARA", p2: "LAURA", keys: ["TAMARA", "VILLEGAS", "LAURA", "ARANCIBIA"] },
-            "MAIDA - VALERIA": { p1: "MAIDA", p2: "VALERIA", keys: ["MAIDA", "MUÑOZ", "VALERIA", "ORELLANA", "CONSTANZO"] },
-            "DANIELA - PAULA RITA": { p1: "DANIELA", p2: "PAULA RITA", keys: ["DANIELA", "IZQUIERDO", "PAULA RITA", "LEYTON"] },
-            "PAULA - BRUNO": { p1: "PAULA", p2: "BRUNO", keys: ["BRUNO", "ANDRE", "ANDRÉ", "PAULA ANDREA", "AZOCAR", "AZÓCAR", "PAULA"] },
-            "ALAN - DUPLA": { p1: "ALAN", p2: "S/N", keys: ["ALAN"] }
+        const DUPLAS_INFO_DEFAULT = {
+            "TIARE - FRANCISCA": { p1: "TIARE", p2: "FRANCISCA", keys: ["TIARE", "RIQUELME", "FRANCISCA", "SALAZAR"], nnasFijos: [] },
+            "MARIA - MARCELO": { p1: "MARIA", p2: "MARCELO", keys: ["MARIA", "CORREA", "MARCELO", "HUENTO"], nnasFijos: [] },
+            "SOLANGE - FRANCISCO": { p1: "SOLANGE", p2: "FRANCISCO", keys: ["SOLANGE", "ALEGRIA", "ALEGRÍA", "FRANCISCO", "CARVAJAL"], nnasFijos: [] },
+            "TAMARA - LAURA": { p1: "TAMARA", p2: "LAURA", keys: ["TAMARA", "VILLEGAS", "LAURA", "ARANCIBIA"], nnasFijos: [] },
+            "MAIDA - VALERIA": { p1: "MAIDA", p2: "VALERIA", keys: ["MAIDA", "MUÑOZ", "VALERIA", "ORELLANA", "CONSTANZO"], nnasFijos: [] },
+            "DANIELA - PAULA RITA": { p1: "DANIELA", p2: "PAULA RITA", keys: ["DANIELA", "IZQUIERDO", "PAULA RITA", "LEYTON"], nnasFijos: [] },
+            "PAULA - BRUNO": { p1: "PAULA", p2: "BRUNO", keys: ["BRUNO", "ANDRE", "ANDRÉ", "PAULA ANDREA", "AZOCAR", "AZÓCAR", "PAULA"], nnasFijos: [] },
+            "ALAN - DUPLA": { p1: "ALAN", p2: "S/N", keys: ["ALAN"], nnasFijos: [] }
         };
 
+        let DUPLAS_INFO = DUPLAS_INFO_DEFAULT;
+        try {
+            const guardado = localStorage.getItem('duplasConfigFAE_v2');
+            if (guardado) DUPLAS_INFO = JSON.parse(guardado);
+        } catch (e) {}
+
+        let ultimosCasosDetectadosPorDupla = {};
+
         const EVENTOS_VISITA = [
-            "VISITA EFECTIVA EN DOMICILIO PARA MONITOREO DE BIENESTAR DEL NNA EN LA FAMILIA DE ACOGIDA",
+            "VISITA EFECTIVA EN DOMICILIO PARA MONITOR EO DE BIENESTAR DEL NNA EN LA FAMILIA DE ACOGI DA",
             "VISITA EFECTIVA EN DOMICILIO A FAMILIA/ADULTO RELACIONADO PARA CONSTATACIÓN DE CONDICIONES DE PROTECCIÓN DEL NNA",
             "ENTREVISTA EFECTIVA EN DOMICILIO A FAMILIA DE ORIGEN Y/O ADULTO RELACIONADO, CON FINES DIAGNÓSTICOS",
             "VISITA FALLIDA EN DOMICILIO A FAMILIA/ADULTO RELACIONADO PARA CONSTATACIÓN DE CONDICIONES DE PROTECCIÓN DEL NNA",
-            "VISITA FALLIDA EN DOMICILIO PARA MONITOREO DE BIENESTAR DEL NNA EN LA FAMILIA DE ACOGIDA"
+            "VISITA FALLIDA EN DOMICILIO PARA MONITOR EO DE BIENESTAR DEL NNA EN LA FAMILIA DE ACOGI DA"
+        ];
+
+        const EVENTOS_NEGRITA = [
+            "INTERVENCIÓN PSICOLÓGICA INDIVIDUAL CON NNA",
+            "ENTREVISTA AL NNA, PARA INDAGAR LAS CONDICIONES DE PROTECCIÓN",
+            "SESIÓN SOCIOEDUCATIVA CON EL NNA",
+            "SESIÓN DE INTERVENCIÓN VINCULAR CON NIÑO(A) MENOR DE 3 AÑOS DE EDAD",
+            "ENTREVISTA DIAGNÓSTICA AL NNA",
+            "SESIÓN DE TERAPIA INDIVIDUAL CON NNA",
+            "CONTENCIÓN EMOCIONAL AL NNA",
+            "CO-CONSTRUCCIÓN DEL O LOS PLANES DE INTERVENCIÓN CON EL NNA",
+            "SESIÓN DE TERAPIA GRUPAL CON EL NNA",
+            "SESIÓN DE ENCUADRE CON NNA",
+            "SESIÓN TERAPÉUTICA CON FAMILIA/ADULTO RELACIONADO Y NNA, FOCALIZANDO TRABAJO EN LA RELACIÓN DIÁDICA",
+            "SESIÓN CON FAMILIA/ADULTO RELACIONADO, ABORDANDO ASPECTOS DE LA VINCULACIÓN CON EL NNA"
         ];
 
         const NOMBRES_MESES = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
+
+        function abrirConfigDuplas() {
+            const cont = document.getElementById('filasConfigDuplas');
+            cont.innerHTML = '';
+            Object.keys(DUPLAS_INFO).forEach(nombreDupla => {
+                agregarFilaDupla(nombreDupla, DUPLAS_INFO[nombreDupla]);
+            });
+            document.getElementById('msgConfigDuplas').textContent = '';
+            document.getElementById('modalConfigDuplas').style.display = 'block';
+        }
+
+        function cerrarConfigDuplas() {
+            document.getElementById('modalConfigDuplas').style.display = 'none';
+        }
+
+        function agregarFilaDupla(nombreDupla = '', config = { p1: '', p2: '', keys: [], nnasFijos: [] }) {
+            const cont = document.getElementById('filasConfigDuplas');
+            const div = document.createElement('div');
+            div.className = 'fila-dupla';
+            div.style = 'border:1px solid #ccc; padding:12px; margin-bottom:12px; border-radius:6px; background:#fafafa;';
+            div.innerHTML = `
+                <div style="margin-bottom:6px;"><label style="font-weight:bold;">Nombre Dupla: </label>
+                    <input type="text" class="inp-dupla-nombre" value="${nombreDupla}" style="width:250px;"></div>
+                <div style="margin-bottom:6px;"><label>Persona 1: </label>
+                    <input type="text" class="inp-dupla-p1" value="${config.p1 || ''}">
+                    &nbsp;&nbsp;<label>Persona 2: </label>
+                    <input type="text" class="inp-dupla-p2" value="${config.p2 || ''}"></div>
+                <div style="margin-bottom:6px;"><label>Palabras clave profesionales (separadas por coma): </label><br>
+                    <input type="text" class="inp-dupla-keys" style="width:95%;" value="${(config.keys || []).join(', ')}"></div>
+                <div style="margin-bottom:6px;"><label>NNA Fijos / Predeterminados (separados por coma): </label><br>
+                    <textarea class="inp-dupla-nnas" style="width:95%; height:45px;" placeholder="Ej: PEREZ JUAN, GOMEZ MARIA">${(config.nnasFijos || []).join(', ')}</textarea></div>
+                <button type="button" onclick="this.closest('.fila-dupla').remove()" style="margin-top:4px; background:#c0392b; color:white; padding:5px 10px; font-size:11px;">🗑️ Eliminar esta dupla</button>
+            `;
+            cont.appendChild(div);
+        }
+
+        function cargarUltimosCasosAlModal() {
+            if (Object.keys(ultimosCasosDetectadosPorDupla).length === 0) {
+                return alert("Primero debes generar un reporte subiendo un Excel para poder extraer los casos.");
+            }
+            const filas = document.querySelectorAll('#filasConfigDuplas .fila-dupla');
+            filas.forEach(f => {
+                const nombreDupla = f.querySelector('.inp-dupla-nombre').value.trim();
+                const textareaNnas = f.querySelector('.inp-dupla-nnas');
+                if (ultimosCasosDetectadosPorDupla[nombreDupla]) {
+                    textareaNnas.value = ultimosCasosDetectadosPorDupla[nombreDupla].join(', ');
+                }
+            });
+            const msg = document.getElementById('msgConfigDuplas');
+            msg.style.color = '#2980b9';
+            msg.textContent = '✓ Casos del último reporte volcados en los campos. Haz clic en "Guardar y Aplicar".';
+        }
+
+        function guardarConfigDuplas() {
+            const filas = document.querySelectorAll('#filasConfigDuplas .fila-dupla');
+            const nuevo = {};
+            filas.forEach(f => {
+                const nombre = f.querySelector('.inp-dupla-nombre').value.trim();
+                const p1 = f.querySelector('.inp-dupla-p1').value.trim();
+                const p2 = f.querySelector('.inp-dupla-p2').value.trim();
+                const keys = f.querySelector('.inp-dupla-keys').value.split(',').map(s => s.trim()).filter(Boolean);
+                const nnasFijos = f.querySelector('.inp-dupla-nnas').value.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+                if (nombre) nuevo[nombre] = { p1, p2, keys, nnasFijos };
+            });
+            DUPLAS_INFO = nuevo;
+            try { localStorage.setItem('duplasConfigFAE_v2', JSON.stringify(DUPLAS_INFO)); } catch (e) {}
+            const msg = document.getElementById('msgConfigDuplas');
+            msg.style.color = 'green';
+            msg.textContent = '✓ Configuración guardada correctamente.';
+        }
 
         function getVal(obj, keyName) {
             const keys = Object.keys(obj);
@@ -139,9 +263,17 @@
             return found ? obj[found] : null;
         }
 
-        function identificarDupla(nombrePro) {
-            if(!nombrePro) return { nombre: "OTROS", integrante: "DESCONOCIDO" };
-            let nombreNormalizado = nombrePro.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        function identificarDupla(nombrePro, nombreNna) {
+            let nombreNormalizado = (nombrePro || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            if (nombreNna) {
+                for (let d in DUPLAS_INFO) {
+                    if (DUPLAS_INFO[d].nnasFijos && DUPLAS_INFO[d].nnasFijos.includes(nombreNna)) {
+                        let p1_norm = DUPLAS_INFO[d].p1.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                        let integrante = nombreNormalizado.includes(p1_norm) ? DUPLAS_INFO[d].p1 : DUPLAS_INFO[d].p2;
+                        return { nombre: d, integrante: integrante };
+                    }
+                }
+            }
             for (let d in DUPLAS_INFO) {
                 if (DUPLAS_INFO[d].keys.some(k => nombreNormalizado.includes(k.normalize("NFD").replace(/[\u0300-\u036f]/g, "")))) {
                     let p1_norm = DUPLAS_INFO[d].p1.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -186,6 +318,23 @@
             return count;
         }
 
+        function calcularEdadYMeses(fNac, fIng) {
+            const hoy = new Date();
+            let edad = null;
+            let mesesPrograma = null;
+            if (fNac) {
+                edad = hoy.getFullYear() - fNac.getFullYear();
+                const noHaCumplido = (hoy.getMonth() < fNac.getMonth()) || (hoy.getMonth() === fNac.getMonth() && hoy.getDate() < fNac.getDate());
+                if (noHaCumplido) edad--;
+            }
+            if (fIng) {
+                mesesPrograma = (hoy.getFullYear() - fIng.getFullYear()) * 12 + (hoy.getMonth() - fIng.getMonth());
+                if (hoy.getDate() < fIng.getDate()) mesesPrograma--;
+                if (mesesPrograma < 0) mesesPrograma = 0;
+            }
+            return { edad, mesesPrograma };
+        }
+
         function procesarArchivo() {
             const input = document.getElementById('inputExcel');
             if (!input.files[0]) return alert("Sube el archivo Excel.");
@@ -201,7 +350,17 @@
         function renderizarReporte(datos) {
             let info = {};
             const conteoMeses = {};
+            const incluirTipoEvento = document.getElementById('chkIncluirTipoEvento').checked;
             
+            Object.keys(DUPLAS_INFO).forEach(dupla => {
+                info[dupla] = { nnaData: {}, individual: {}, totalDupla: 0, desfase: {} };
+                if (DUPLAS_INFO[dupla].nnasFijos) {
+                    DUPLAS_INFO[dupla].nnasFijos.forEach(nnaFijo => {
+                        info[dupla].nnaData[nnaFijo] = { dias: {}, diasRegistro: {}, total: 0, visitas: 0, profAtencion: {}, tiposEvento: {}, edad: null, mesesPrograma: null };
+                    });
+                }
+            });
+
             datos.forEach(f => {
                 const fEv = obtenerFechaCompleta(getVal(f, 'FechaEvento') || getVal(f, 'fecha_evento'));
                 if (fEv) {
@@ -215,20 +374,36 @@
 
             datos.forEach(f => {
                 const proNombre = `${getVal(f, 'Tnombres') || ''} ${getVal(f, 'Tpaterno') || ''}`;
-                const resDupla = identificarDupla(proNombre);
                 const nna = `${getVal(f, 'apellidopaterno') || getVal(f, 'apellido_paterno') || ''} ${getVal(f, 'nombres') || ''}`.trim().toUpperCase();
+                
+                const resDupla = identificarDupla(proNombre, nna);
+
+                const tNombres = (getVal(f, 'Tnombres') || '').trim();
+                const tPaterno = (getVal(f, 'Tpaterno') || '').trim();
+                const inicialesProf = [tNombres, tPaterno]
+                    .filter(Boolean)
+                    .map(s => s.charAt(0).toUpperCase())
+                    .join('.') + (tNombres || tPaterno ? '.' : '');
                 
                 const fEv = obtenerFechaCompleta(getVal(f, 'FechaEvento') || getVal(f, 'fecha_evento'));
                 const fAct = obtenerFechaCompleta(getVal(f, 'FechaActualizacion') || getVal(f, 'fecha_actualizacion'));
                 const tipo = (getVal(f, 'TipoEvento') || getVal(f, 'tipo_evento') || "").trim().toUpperCase();
+                const fNac = obtenerFechaCompleta(getVal(f, 'FechaNacimiento') || getVal(f, 'fecha_nacimiento'));
+                const fIng = obtenerFechaCompleta(getVal(f, 'FechaIngreso') || getVal(f, 'fecha_ingreso'));
                 
                 if (!info[resDupla.nombre]) info[resDupla.nombre] = { nnaData: {}, individual: {}, totalDupla: 0, desfase: {} };
                 let dData = info[resDupla.nombre];
 
-                if (nna && !dData.nnaData[nna]) dData.nnaData[nna] = { dias: {}, diasRegistro: {}, total: 0, visitas: 0, profAtencion: {} };
+                if (nna && !dData.nnaData[nna]) {
+                    const { edad, mesesPrograma } = calcularEdadYMeses(fNac, fIng);
+                    dData.nnaData[nna] = { dias: {}, diasRegistro: {}, total: 0, visitas: 0, profAtencion: {}, tiposEvento: {}, edad, mesesPrograma };
+                } else if (nna && dData.nnaData[nna]) {
+                    const { edad, mesesPrograma } = calcularEdadYMeses(fNac, fIng);
+                    if (edad !== null) dData.nnaData[nna].edad = edad;
+                    if (mesesPrograma !== null) dData.nnaData[nna].mesesPrograma = mesesPrograma;
+                }
                 
-                // Procesar Fecha de Evento
-                if (nna && fEv && fEv.getMonth() == mesMasFrecuente) {
+                if (nna && fEv && mesMasFrecuente !== null && fEv.getMonth() == mesMasFrecuente) {
                     const dia = fEv.getDate();
                     dData.nnaData[nna].dias[dia] = (dData.nnaData[nna].dias[dia] || 0) + 1;
                     dData.nnaData[nna].total++;
@@ -236,15 +411,19 @@
                     if (EVENTOS_VISITA.includes(tipo)) dData.nnaData[nna].visitas++;
                     dData.nnaData[nna].profAtencion[resDupla.integrante] = true;
                     dData.individual[resDupla.integrante] = (dData.individual[resDupla.integrante] || 0) + 1;
+                    if (tipo) {
+                        if (!dData.nnaData[nna].tiposEvento[tipo]) dData.nnaData[nna].tiposEvento[tipo] = { cantidad: 0, fechas: [], profesionales: [] };
+                        dData.nnaData[nna].tiposEvento[tipo].cantidad++;
+                        dData.nnaData[nna].tiposEvento[tipo].fechas.push(fEv.toLocaleDateString('es-CL'));
+                        dData.nnaData[nna].tiposEvento[tipo].profesionales.push(inicialesProf || '-');
+                    }
                 }
 
-                // Procesar Fecha de Registro (Actualización)
-                if (nna && fAct && fAct.getMonth() == mesMasFrecuente) {
+                if (nna && fAct && mesMasFrecuente !== null && fAct.getMonth() == mesMasFrecuente) {
                     const diaAct = fAct.getDate();
                     dData.nnaData[nna].diasRegistro[diaAct] = (dData.nnaData[nna].diasRegistro[diaAct] || 0) + 1;
                 }
 
-                // Calcular Desfase
                 if (nna && fEv && fAct) {
                     const diasLab = calcularDiasLaborales(fEv, fAct);
                     if (!dData.desfase[resDupla.integrante]) dData.desfase[resDupla.integrante] = { suma: 0, cant: 0 };
@@ -253,31 +432,52 @@
                 }
             });
 
+            // Registrar los casos detectados para poder precargarlos automáticamente
+            ultimosCasosDetectadosPorDupla = {};
+            Object.keys(info).forEach(dupla => {
+                ultimosCasosDetectadosPorDupla[dupla] = Object.keys(info[dupla].nnaData);
+            });
+
             const contenedor = document.getElementById('contenedor-reporte');
             contenedor.innerHTML = "";
 
             Object.keys(info).sort().forEach((dupla, idx) => {
                 const dData = info[dupla];
                 const nnas = Object.keys(dData.nnaData).sort();
+                if (nnas.length === 0) return;
+
                 const promedioInt = nnas.length > 0 ? (dData.totalDupla / nnas.length).toFixed(1) : 0;
                 
                 let tablaFilasEvento = "";
                 let tablaFilasRegistro = "";
+                let tablaFilasTipoEvento = "";
                 let alertasCoberturaHTML = "";
                 let alertasFrecuenciaHTML = "";
 
                 nnas.forEach(n => {
                     const dataN = dData.nnaData[n];
                     
-                    // Fila Evento
                     tablaFilasEvento += `<tr><td class="col-nna">${n}</td>`;
                     for(let i=1; i<=31; i++) tablaFilasEvento += `<td class="${dataN.dias[i] ? 'celda-activa' : ''}">${dataN.dias[i] || ''}</td>`;
                     tablaFilasEvento += `<td class="col-total">${dataN.total}</td></tr>`;
 
-                    // Fila Registro
                     tablaFilasRegistro += `<tr><td class="col-nna">${n}</td>`;
                     for(let i=1; i<=31; i++) tablaFilasRegistro += `<td class="${dataN.diasRegistro[i] ? 'celda-registro' : ''}">${dataN.diasRegistro[i] || ''}</td>`;
                     tablaFilasRegistro += `<td class="col-total">${Object.values(dataN.diasRegistro).reduce((a,b)=>a+b,0)}</td></tr>`;
+
+                    if (incluirTipoEvento && dataN.total > 0) {
+                        const tiposOrdenados = Object.keys(dataN.tiposEvento).sort((a, b) => dataN.tiposEvento[b].cantidad - dataN.tiposEvento[a].cantidad);
+                        tiposOrdenados.forEach((tipo, i) => {
+                            const infoEv = dataN.tiposEvento[tipo];
+                            tablaFilasTipoEvento += `<tr>
+                                ${i === 0 ? `<td class="col-nna-te" rowspan="${tiposOrdenados.length}">${n}<span class="nna-total-sub">Total de intervenciones: ${dataN.total}</span><span class="nna-total-sub">Edad: ${dataN.edad !== null ? dataN.edad + ' años' : 's/d'}</span><span class="nna-total-sub">Permanencia: ${dataN.mesesPrograma !== null ? dataN.mesesPrograma + ' meses' : 's/d'}</span></td>` : ''}
+                                <td class="col-tipo-te ${EVENTOS_NEGRITA.includes(tipo) ? 'tipo-negrita' : ''}">${tipo}</td>
+                                <td class="col-cant-te">${infoEv.cantidad}</td>
+                                <td class="col-fechas-te">${infoEv.fechas.join(', ')}</td>
+                                <td class="col-prof-te">${infoEv.profesionales.join(', ')}</td>
+                            </tr>`;
+                        });
+                    }
                     
                     const config = DUPLAS_INFO[dupla];
                     if (config && config.p2 !== "S/N") {
@@ -300,7 +500,7 @@
                 const divDupla = document.createElement('div');
                 divDupla.className = "seccion-dupla";
                 divDupla.id = pageId;
-                divDupla.setAttribute('data-equipo', dupla); 
+                divDupla.setAttribute('data-equipo', dupla);
 
                 divDupla.innerHTML = `
                     <div class="header"><div><strong>FUNDACIÓN DEM</strong><br>FAE Cerrillos</div><div><strong>REPORTE ANALÍTICO DE GESTIÓN - ${nombreMesDetectado || 'MENSUAL'}</strong></div><div>${new Date().toLocaleDateString()}</div></div>
@@ -320,13 +520,21 @@
                     <table><thead><tr><th class="col-nna">NNA</th>${Array.from({length:31},(_,i)=>`<th>${i+1}</th>`).join('')}<th class="col-total">TOT</th></tr></thead><tbody>${tablaFilasRegistro}</tbody></table>
 
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                        ${alertasCoberturaHTML !== "" ? `<div class="alert-box-red"><h4>⚠️ Alertas de Cobertura Profesional:</h4><div class="alert-list">${alertasCoberturaHTML}</div></div>` : '<div class="alert-box-red" style="background:#f0fff4; border-color:#9ae6b4; color:#276749;"><h4>✅ Cobertura Profesional OK</h4></div>'}
-                        ${alertasFrecuenciaHTML !== "" ? `<div class="alert-box-orange"><h4>⚠️ Alertas de Frecuencia Técnica:</h4><div class="alert-list">${alertasFrecuenciaHTML}</div></div>` : '<div class="alert-box-orange" style="background:#f0fff4; border-color:#9ae6b4; color:#276749;"><h4>✅ Frecuencia Técnica OK</h4></div>'}
+                        ${alertasCoberturaHTML !== "" ? `<div class="alert-box-red"><h4>⚠️ Alertas de Cobertura Profesional:</h4><div class="alert-list">${alertasCoberturaHTML}</div></div>` : '<div class="alert-box-red" style="background:#f0fff4; border-color:#9ae6b4; color:#276749;"><h4>✓ Cobertura Profesional OK</h4></div>'}
+                        ${alertasFrecuenciaHTML !== "" ? `<div class="alert-box-orange"><h4>⚠️ Alertas de Frecuencia Técnica:</h4><div class="alert-list">${alertasFrecuenciaHTML}</div></div>` : '<div class="alert-box-orange" style="background:#f0fff4; border-color:#9ae6b4; color:#276749;"><h4>✓ Frecuencia Técnica OK</h4></div>'}
                     </div>
                     <div class="chart-full-width"><h3>3. Intervenciones por NNA (Digitación Completa)</h3><canvas id="g1-${idx}"></canvas></div>
                     <div class="chart-full-width"><h3>4. Total Visitas y Terreno por NNA (Eventos Específicos)</h3><canvas id="g2-${idx}"></canvas></div>
                     <div class="charts-half-grid"><div class="chart-half-width"><h3>5. Cobertura Terreno</h3><canvas id="g3-${idx}"></canvas></div><div class="chart-half-width"><h3>6. Intervenciones por profesional</h3><canvas id="g4-${idx}"></canvas></div></div>
                     <div class="desfase-seccion"><div class="desfase-titulo">7. Oportunidad de digitación (desfase promedio en días hábiles)</div><div class="desfase-grid">${htmlDesfaseBadges || 'Sin datos'}</div></div>
+
+                    ${incluirTipoEvento ? `
+                    <div class="tabla-titulo">8. Detalle de Tipos de Evento por NNA</div>
+                    <table>
+                        <thead><tr><th class="col-nna-te">NNA</th><th class="col-tipo-te">Tipo de Evento</th><th class="col-cant-te">Cant.</th><th class="col-fechas-te">Fechas</th><th class="col-prof-te">Prof.</th></tr></thead>
+                        <tbody>${tablaFilasTipoEvento}</tbody>
+                    </table>` : ''}
+
                     <button class="no-print btn-download-item" onclick="exportarPDFIndividual('${pageId}', '${dupla}')">📥 DESCARGAR PDF DE ESTE EQUIPO</button>`;
                 
                 contenedor.appendChild(divDupla);
@@ -357,7 +565,7 @@
                 new Chart(document.getElementById(`g3-${idx}`), { type: 'pie', data: { labels: ['CON VISITA', 'SIN VISITA'], datasets: [{ data: [nnas.filter(n => dData.nnaData[n].visitas > 0).length, nnas.length - nnas.filter(n => dData.nnaData[n].visitas > 0).length], backgroundColor: ['#b5d333', '#e74c3c'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 9, weight: 'bold', family: "'Segoe UI', Tahoma, sans-serif" } } }, datalabels: { color: '#1a1a1a', formatter: (v,c)=>{ let sum = c.dataset.data.reduce((a,b)=>a+b,0); let perc = ((v*100)/sum).toFixed(1); return v + " (" + perc + "%)"; }, font: { size: 9, weight: 'bold', family: "'Segoe UI', Tahoma, sans-serif" } } } } });
                 new Chart(document.getElementById(`g4-${idx}`), { type: 'pie', data: { labels: Object.keys(dData.individual).map(k => k.toUpperCase()), datasets: [{ data: Object.values(dData.individual), backgroundColor: ['#b5d333', '#1a1a1a'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 9, weight: 'bold', family: "'Segoe UI', Tahoma, sans-serif" } } }, datalabels: { color: (ctx) => ctx.dataIndex === 0 ? '#1a1a1a' : '#fff', formatter: (v,c)=>{ let tot = c.dataset.data.reduce((a,b)=>a+b,0); return v + " (" + ((v*100)/tot).toFixed(1) + "%)"; }, font: { size: 8, weight: 'bold', family: "'Segoe UI', Tahoma, sans-serif" } } } } });
             });
-            alert("Reporte finalizado.");
+            alert("Reporte finalizado. Los casos han quedado listos para ser predeterminados si lo deseas en Configuración.");
         }
 
         function exportarPDFIndividual(id, nombreEquipo) {
