@@ -114,12 +114,15 @@
             </select>
         </div>
 
-        <div style="margin-bottom: 10px; font-weight: bold; color: #276749;" id="estadoConexionCloud">
-            ☁️ Conectando con la nube (Supabase)...
+        <div style="margin-bottom: 10px;">
+            <input type="file" id="inputExcel" accept=".xlsx, .xls">
+            <span id="estadoArchivoGuardado" style="display:block; font-size:0.85em; color:#276749; margin-top:5px; font-weight:bold;"></span>
         </div>
 
-        <button class="btn-green" onclick="cargarYGenerarReporte()">🔄 CARGAR REPORTE DESDE LA NUBE</button>
+        <button onclick="procesarArchivo()">GENERA REPORTE</button>
+        <button class="btn-green" onclick="exportarPDFSeparados()">GUARDAR TODOS LOS PDF (AUTOMÁTICO)</button>
         <button style="background:#5D6D7E; color:white;" onclick="abrirConfigDuplas()">🛠️ Configurar Duplas y Casos NNA</button>
+        <button id="btnBorrarExcel" style="background:#c0392b; color:white; display:none;" onclick="borrarExcelGuardado()">🗑️ Borrar Excel guardado</button>
         
         <br><br>
         <label style="font-size:0.95em;">
@@ -132,7 +135,7 @@
         <div style="background:white; max-width:800px; margin:40px auto; padding:25px; border-radius:8px; max-height:85vh; overflow-y:auto;">
             <h2 style="margin-top:0;">🛠️ Configuración de Profesionales y Casos NNA por Dupla</h2>
             <p style="font-size:0.9em; color:#555;">
-                Configura los nombres, palabras clave y los <b>NNA predeterminados</b>.
+                Configura los nombres, palabras clave y los <b>NNA predeterminados</b>. Si ya generaste un reporte con un Excel, puedes usar el botón de abajo para cargarlos automáticamente.
             </p>
             <div style="margin-bottom: 15px;">
                 <button type="button" onclick="cargarUltimosCasosAlModal()" style="background: #2980b9; color: white; font-size: 12px;">📥 Predeterminar con los casos del último reporte</button>
@@ -152,11 +155,6 @@
 
     <script>
         Chart.register(ChartDataLabels);
-
-        // ================= CONFIGURACIÓN SUPABASE STORAGE =================
-        // Reemplaza esto con la URL pública directa de tu archivo en Supabase Storage
-        const URL_EXCEL_SUPABASE = "https://TU_PROYECTO.supabase.co/storage/v1/object/public/nombre_bucket/reporte_actual.xlsx";
-        // ==================================================================
 
         const DUPLAS_INFO_DEFAULT = {
             "TIARE - FRANCISCA": { p1: "TIARE", p2: "FRANCISCA", keys: ["TIARE", "RIQUELME", "FRANCISCA", "SALAZAR"], nnasFijos: [] },
@@ -178,47 +176,20 @@
         let ultimosCasosDetectadosPorDupla = {};
         let datosExcelMemoria = null;
 
+        // Comprobar al iniciar si ya hay un Excel almacenado en localStorage
         window.addEventListener('DOMContentLoaded', () => {
             poblarSelectorDuplas();
-            intentarCargarDesdeSupabaseAutomatico();
+            const excelGuardado = localStorage.getItem('excelDatosFAE_cache');
+            if (excelGuardado) {
+                try {
+                    datosExcelMemoria = JSON.parse(excelGuardado);
+                    document.getElementById('estadoArchivoGuardado').textContent = '✓ Hay un archivo Excel almacenado en memoria. Puedes generar el reporte directamente.';
+                    document.getElementById('btnBorrarExcel').style.display = 'inline-block';
+                } catch (e) {
+                    localStorage.removeItem('excelDatosFAE_cache');
+                }
+            }
         });
-
-        async function intentarCargarDesdeSupabaseAutomatico() {
-            const estadoEl = document.getElementById('estadoConexionCloud');
-            try {
-                const response = await fetch(URL_EXCEL_SUPABASE);
-                if (!response.ok) throw new Error("No se pudo conectar al archivo en la nube.");
-                const arrayBuffer = await response.arrayBuffer();
-                const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array', cellDates: true });
-                datosExcelMemoria = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
-                estadoEl.textContent = '✓ Conectado a la nube: Datos actualizados listos.';
-                estadoEl.style.color = '#276749';
-            } catch (err) {
-                estadoEl.textContent = '⚠️ Configura la URL de Supabase Storage en el código para conectar la nube.';
-                estadoEl.style.color = '#c0392b';
-            }
-        }
-
-        async function cargarYGenerarReporte() {
-            if (datosExcelMemoria) {
-                renderizarReporte(datosExcelMemoria);
-                return;
-            }
-            // Intento secundario de descarga si no se cargó automático
-            const estadoEl = document.getElementById('estadoConexionCloud');
-            estadoEl.textContent = '⏳ Descargando archivo desde Supabase...';
-            try {
-                const response = await fetch(URL_EXCEL_SUPABASE);
-                if (!response.ok) throw new Error("Error de red al descargar el Excel.");
-                const arrayBuffer = await response.arrayBuffer();
-                const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array', cellDates: true });
-                datosExcelMemoria = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
-                estadoEl.textContent = '✓ Datos descargados de la nube con éxito.';
-                renderizarReporte(datosExcelMemoria);
-            } catch (err) {
-                alert("No se pudo obtener el archivo desde Supabase. Verifica la URL configurada. Detalle: " + err.message);
-            }
-        }
 
         function poblarSelectorDuplas() {
             const select = document.getElementById('selectDuplaVista');
@@ -295,7 +266,7 @@
 
         function cargarUltimosCasosAlModal() {
             if (Object.keys(ultimosCasosDetectadosPorDupla).length === 0) {
-                return alert("Primero debes generar el reporte para poder extraer los casos.");
+                return alert("Primero debes generar un reporte subiendo un Excel para poder extraer los casos.");
             }
             const filas = document.querySelectorAll('#filasConfigDuplas .fila-dupla');
             filas.forEach(f => {
@@ -327,6 +298,17 @@
             const msg = document.getElementById('msgConfigDuplas');
             msg.style.color = 'green';
             msg.textContent = '✓ Configuración guardada correctamente.';
+        }
+
+        function borrarExcelGuardado() {
+            if (confirm("¿Estás seguro de que deseas eliminar el archivo Excel almacenado en memoria?")) {
+                localStorage.removeItem('excelDatosFAE_cache');
+                datosExcelMemoria = null;
+                document.getElementById('estadoArchivoGuardado').textContent = '';
+                document.getElementById('btnBorrarExcel').style.display = 'none';
+                document.getElementById('inputExcel').value = '';
+                alert("Excel eliminado de la memoria.");
+            }
         }
 
         function getVal(obj, keyName) {
@@ -405,6 +387,37 @@
                 if (mesesPrograma < 0) mesesPrograma = 0;
             }
             return { edad, mesesPrograma };
+        }
+
+        function procesarArchivo() {
+            const input = document.getElementById('inputExcel');
+            
+            if (input.files && input.files[0]) {
+                // Si el usuario subió un archivo nuevo, lo leemos y guardamos en caché
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const workbook = XLSX.read(new Uint8Array(e.target.result), {type: 'array', cellDates: true});
+                        const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+                        
+                        // Guardar en localStorage para persistencia
+                        localStorage.setItem('excelDatosFAE_cache', JSON.stringify(json));
+                        datosExcelMemoria = json;
+                        document.getElementById('estadoArchivoGuardado').textContent = '✓ Archivo Excel cargado y guardado en memoria correctamente.';
+                        document.getElementById('btnBorrarExcel').style.display = 'inline-block';
+
+                        renderizarReporte(json);
+                    } catch (err) {
+                        alert("Error al leer el archivo Excel: " + err.message);
+                    }
+                };
+                reader.readAsArrayBuffer(input.files[0]);
+            } else if (datosExcelMemoria) {
+                // Si no subió archivo nuevo pero hay uno guardado en memoria, lo usamos directamente
+                renderizarReporte(datosExcelMemoria);
+            } else {
+                alert("Por favor, selecciona un archivo Excel primero.");
+            }
         }
 
         function renderizarReporte(datos) {
