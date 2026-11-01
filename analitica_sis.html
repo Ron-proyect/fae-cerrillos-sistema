@@ -52,8 +52,8 @@
         th { background: #eee; height: 14px; font-size: 7px; font-weight: bold; }
         
         .col-nna { width: 130px; text-align: left !important; padding-left: 5px; font-weight: bold; white-space: normal; font-size: 7px; line-height: 8px; }
-        .col-nna-te { width: 110px; text-align: left !important; padding-left: 5px; font-weight: bold; white-space: normal; font-size: 8.5px; line-height: 11px; vertical-align: top; }
-        .nna-total-sub { display: block; font-weight: normal; color: #5D6D7E; font-size: 7.5px; margin-top: 2px; }
+        .col-nna-te { width: 120px; text-align: left !important; padding-left: 5px; font-weight: bold; white-space: normal; font-size: 8px; line-height: 10px; vertical-align: top; }
+        .nna-total-sub { display: block; font-weight: normal; color: #5D6D7E; font-size: 7px; margin-top: 2px; }
         .col-cant-te { width: 40px; font-weight: bold; }
         .col-tipo-te { width: auto; text-align: left !important; padding-left: 5px; font-size: 7px; }
         .tipo-negrita { font-weight: bold; color: #1a1a1a; }
@@ -106,6 +106,14 @@
 
     <div class="no-print">
         <h1>📊 Analítica FAE: Reporte Institucional</h1>
+        
+        <div style="background: #f0f4f8; padding: 12px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #cbd5e1;">
+            <label for="selectDuplaVista" style="font-weight: bold; font-size: 0.9em; color: #1a1a1a;">👥 Perfil de Visualización:</label><br>
+            <select id="selectDuplaVista" style="padding: 6px 12px; font-size: 14px; border-radius: 6px; border: 1px solid #aaa; margin-top: 5px; width: 100%; max-width: 350px;">
+                <option value="TODOS">👑 Ver Todos (Administrador - Fundación DEM)</option>
+            </select>
+        </div>
+
         <input type="file" id="inputExcel" accept=".xlsx, .xls">
         <br><br>
         <button onclick="procesarArchivo()">GENERA REPORTE</button>
@@ -162,6 +170,18 @@
 
         let ultimosCasosDetectadosPorDupla = {};
 
+        function poblarSelectorDuplas() {
+            const select = document.getElementById('selectDuplaVista');
+            select.innerHTML = '<option value="TODOS">👑 Ver Todos (Administrador - Fundación DEM)</option>';
+            Object.keys(DUPLAS_INFO).sort().forEach(dupla => {
+                const opt = document.createElement('option');
+                opt.value = dupla;
+                opt.textContent = `Dupla: ${dupla}`;
+                select.appendChild(opt);
+            });
+        }
+        window.addEventListener('DOMContentLoaded', poblarSelectorDuplas);
+
         const EVENTOS_VISITA = [
             "VISITA EFECTIVA EN DOMICILIO PARA MONITOR EO DE BIENESTAR DEL NNA EN LA FAMILIA DE ACOGI DA",
             "VISITA EFECTIVA EN DOMICILIO A FAMILIA/ADULTO RELACIONADO PARA CONSTATACIÓN DE CONDICIONES DE PROTECCIÓN DEL NNA",
@@ -183,7 +203,7 @@
             "SESIÓN DE ENCUADRE CON NNA",
             "SESIÓN TERAPÉUTICA CON FAMILIA/ADULTO RELACIONADO Y NNA, FOCALIZANDO TRABAJO EN LA RELACIÓN DIÁDICA",
             "OBSERVACIÓN DEL BIENESTAR DEL NNA EN INTERACCIÓN CON FAMILIA/ADULTO RELACIONADO EN VISITA SUPERVISADA",
-            "CO-CONSTRUCCIÓN DE LA MODIFICACIÓN O AJUSTES DEL O LOS PLANES DE INTERVENCIÓN INICIAL CON EL NNA",
+            "CO-CONSTRUCCIÓN DE LA MODIFICACIÓN OR AJUSTES DEL O LOS PLANES DE INTERVENCIÓN INICIAL CON EL NNA",
             "SESIÓN CON FAMILIA/ADULTO RELACIONADO, ABORDANDO ASPECTOS DE LA VINCULACIÓN CON EL NNA"
         ];
 
@@ -254,6 +274,7 @@
             });
             DUPLAS_INFO = nuevo;
             try { localStorage.setItem('duplasConfigFAE_v2', JSON.stringify(DUPLAS_INFO)); } catch (e) {}
+            poblarSelectorDuplas();
             const msg = document.getElementById('msgConfigDuplas');
             msg.style.color = 'green';
             msg.textContent = '✓ Configuración guardada correctamente.';
@@ -353,12 +374,15 @@
             let info = {};
             const conteoMeses = {};
             const incluirTipoEvento = document.getElementById('chkIncluirTipoEvento').checked;
+            const duplaSeleccionada = document.getElementById('selectDuplaVista').value;
             
             Object.keys(DUPLAS_INFO).forEach(dupla => {
+                if (duplaSeleccionada !== "TODOS" && dupla !== duplaSeleccionada) return;
+
                 info[dupla] = { nnaData: {}, individual: {}, totalDupla: 0, desfase: {} };
                 if (DUPLAS_INFO[dupla].nnasFijos) {
                     DUPLAS_INFO[dupla].nnasFijos.forEach(nnaFijo => {
-                        info[dupla].nnaData[nnaFijo] = { dias: {}, diasRegistro: {}, total: 0, visitas: 0, profAtencion: {}, tiposEvento: {}, edad: null, mesesPrograma: null };
+                        info[dupla].nnaData[nnaFijo] = { dias: {}, diasRegistro: {}, total: 0, visitas: 0, profAtencion: {}, tiposEvento: {}, diasNegritaSet: new Set(), edad: null, mesesPrograma: null };
                     });
                 }
             });
@@ -380,6 +404,8 @@
                 
                 const resDupla = identificarDupla(proNombre, nna);
 
+                if (duplaSeleccionada !== "TODOS" && resDupla.nombre !== duplaSeleccionada) return;
+
                 const tNombres = (getVal(f, 'Tnombres') || '').trim();
                 const tPaterno = (getVal(f, 'Tpaterno') || '').trim();
                 const inicialesProf = [tNombres, tPaterno]
@@ -398,7 +424,7 @@
 
                 if (nna && !dData.nnaData[nna]) {
                     const { edad, mesesPrograma } = calcularEdadYMeses(fNac, fIng);
-                    dData.nnaData[nna] = { dias: {}, diasRegistro: {}, total: 0, visitas: 0, profAtencion: {}, tiposEvento: {}, edad, mesesPrograma };
+                    dData.nnaData[nna] = { dias: {}, diasRegistro: {}, total: 0, visitas: 0, profAtencion: {}, tiposEvento: {}, diasNegritaSet: new Set(), edad, mesesPrograma };
                 } else if (nna && dData.nnaData[nna]) {
                     const { edad, mesesPrograma } = calcularEdadYMeses(fNac, fIng);
                     if (edad !== null) dData.nnaData[nna].edad = edad;
@@ -413,6 +439,12 @@
                     if (EVENTOS_VISITA.includes(tipo)) dData.nnaData[nna].visitas++;
                     dData.nnaData[nna].profAtencion[resDupla.integrante] = true;
                     dData.individual[resDupla.integrante] = (dData.individual[resDupla.integrante] || 0) + 1;
+
+                    // Registrar día único si el evento es de negrita (atención especializada/psicológica)
+                    if (EVENTOS_NEGRITA.includes(tipo)) {
+                        dData.nnaData[nna].diasNegritaSet.add(fEv.toDateString());
+                    }
+
                     if (tipo) {
                         if (!dData.nnaData[nna].tiposEvento[tipo]) dData.nnaData[nna].tiposEvento[tipo] = { cantidad: 0, fechas: [], profesionales: [] };
                         dData.nnaData[nna].tiposEvento[tipo].cantidad++;
@@ -434,7 +466,6 @@
                 }
             });
 
-            // Registrar los casos detectados para poder precargarlos automáticamente
             ultimosCasosDetectadosPorDupla = {};
             Object.keys(info).forEach(dupla => {
                 ultimosCasosDetectadosPorDupla[dupla] = Object.keys(info[dupla].nnaData);
@@ -458,6 +489,7 @@
 
                 nnas.forEach(n => {
                     const dataN = dData.nnaData[n];
+                    const diasAtencionPsicologica = dataN.diasNegritaSet ? dataN.diasNegritaSet.size : 0;
                     
                     tablaFilasEvento += `<tr><td class="col-nna">${n}</td>`;
                     for(let i=1; i<=31; i++) tablaFilasEvento += `<td class="${dataN.dias[i] ? 'celda-activa' : ''}">${dataN.dias[i] || ''}</td>`;
@@ -472,7 +504,13 @@
                         tiposOrdenados.forEach((tipo, i) => {
                             const infoEv = dataN.tiposEvento[tipo];
                             tablaFilasTipoEvento += `<tr>
-                                ${i === 0 ? `<td class="col-nna-te" rowspan="${tiposOrdenados.length}">${n}<span class="nna-total-sub">Total de intervenciones: ${dataN.total}</span><span class="nna-total-sub">Edad: ${dataN.edad !== null ? dataN.edad + ' años' : 's/d'}</span><span class="nna-total-sub">Permanencia: ${dataN.mesesPrograma !== null ? dataN.mesesPrograma + ' meses' : 's/d'}</span></td>` : ''}
+                                ${i === 0 ? `<td class="col-nna-te" rowspan="${tiposOrdenados.length}">
+                                    ${n}
+                                    <span class="nna-total-sub">Total de intervenciones: ${dataN.total}</span>
+                                    <span class="nna-total-sub">Edad: ${dataN.edad !== null ? dataN.edad + ' años' : 's/d'}</span>
+                                    <span class="nna-total-sub">Permanencia: ${dataN.mesesPrograma !== null ? dataN.mesesPrograma + ' meses' : 's/d'}</span>
+                                    <span class="nna-total-sub" style="color:#1a1a1a; font-weight:bold;">Días atención especializada: ${diasAtencionPsicologica} días</span>
+                                </td>` : ''}
                                 <td class="col-tipo-te ${EVENTOS_NEGRITA.includes(tipo) ? 'tipo-negrita' : ''}">${tipo}</td>
                                 <td class="col-cant-te">${infoEv.cantidad}</td>
                                 <td class="col-fechas-te">${infoEv.fechas.join(', ')}</td>
@@ -567,7 +605,7 @@
                 new Chart(document.getElementById(`g3-${idx}`), { type: 'pie', data: { labels: ['CON VISITA', 'SIN VISITA'], datasets: [{ data: [nnas.filter(n => dData.nnaData[n].visitas > 0).length, nnas.length - nnas.filter(n => dData.nnaData[n].visitas > 0).length], backgroundColor: ['#b5d333', '#e74c3c'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 9, weight: 'bold', family: "'Segoe UI', Tahoma, sans-serif" } } }, datalabels: { color: '#1a1a1a', formatter: (v,c)=>{ let sum = c.dataset.data.reduce((a,b)=>a+b,0); let perc = ((v*100)/sum).toFixed(1); return v + " (" + perc + "%)"; }, font: { size: 9, weight: 'bold', family: "'Segoe UI', Tahoma, sans-serif" } } } } });
                 new Chart(document.getElementById(`g4-${idx}`), { type: 'pie', data: { labels: Object.keys(dData.individual).map(k => k.toUpperCase()), datasets: [{ data: Object.values(dData.individual), backgroundColor: ['#b5d333', '#1a1a1a'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 9, weight: 'bold', family: "'Segoe UI', Tahoma, sans-serif" } } }, datalabels: { color: (ctx) => ctx.dataIndex === 0 ? '#1a1a1a' : '#fff', formatter: (v,c)=>{ let tot = c.dataset.data.reduce((a,b)=>a+b,0); return v + " (" + ((v*100)/tot).toFixed(1) + "%)"; }, font: { size: 8, weight: 'bold', family: "'Segoe UI', Tahoma, sans-serif" } } } } });
             });
-            alert("Reporte finalizado. Los casos han quedado listos para ser predeterminados si lo deseas en Configuración.");
+            alert("Reporte finalizado.");
         }
 
         function exportarPDFIndividual(id, nombreEquipo) {
