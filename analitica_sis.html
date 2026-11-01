@@ -114,11 +114,16 @@
             </select>
         </div>
 
-        <input type="file" id="inputExcel" accept=".xlsx, .xls">
-        <br><br>
+        <div style="margin-bottom: 10px;">
+            <input type="file" id="inputExcel" accept=".xlsx, .xls">
+            <span id="estadoArchivoGuardado" style="display:block; font-size:0.85em; color:#276749; margin-top:5px; font-weight:bold;"></span>
+        </div>
+
         <button onclick="procesarArchivo()">GENERA REPORTE</button>
         <button class="btn-green" onclick="exportarPDFSeparados()">GUARDAR TODOS LOS PDF (AUTOMÁTICO)</button>
         <button style="background:#5D6D7E; color:white;" onclick="abrirConfigDuplas()">🛠️ Configurar Duplas y Casos NNA</button>
+        <button id="btnBorrarExcel" style="background:#c0392b; color:white; display:none;" onclick="borrarExcelGuardado()">🗑️ Borrar Excel guardado</button>
+        
         <br><br>
         <label style="font-size:0.95em;">
             <input type="checkbox" id="chkIncluirTipoEvento" checked>
@@ -155,10 +160,10 @@
             "TIARE - FRANCISCA": { p1: "TIARE", p2: "FRANCISCA", keys: ["TIARE", "RIQUELME", "FRANCISCA", "SALAZAR"], nnasFijos: [] },
             "MARIA - MARCELO": { p1: "MARIA", p2: "MARCELO", keys: ["MARIA", "CORREA", "MARCELO", "HUENTO"], nnasFijos: [] },
             "SOLANGE - FRANCISCO": { p1: "SOLANGE", p2: "FRANCISCO", keys: ["SOLANGE", "ALEGRIA", "ALEGRÍA", "FRANCISCO", "CARVAJAL"], nnasFijos: [] },
-            "ALAN - LAURA": { p1: "ALAN", p2: "LAURA", keys: ["ALAN", "ZAMORA", "LAURA", "ARANCIBIA"], nnasFijos: [] },
+            "TAMARA - LAURA": { p1: "TAMARA", p2: "LAURA", keys: ["TAMARA", "VILLEGAS", "LAURA", "ARANCIBIA"], nnasFijos: [] },
             "MAIDA - VALERIA": { p1: "MAIDA", p2: "VALERIA", keys: ["MAIDA", "MUÑOZ", "VALERIA", "ORELLANA", "CONSTANZO"], nnasFijos: [] },
             "DANIELA - PAULA RITA": { p1: "DANIELA", p2: "PAULA RITA", keys: ["DANIELA", "IZQUIERDO", "PAULA RITA", "LEYTON"], nnasFijos: [] },
-            "IGNACIA - BRUNO": { p1: "IGNACIA", p2: "BRUNO", keys: ["BRUNO", "ANDRE", "ANDRÉ", "IGNACIA", "AHUMADA"], nnasFijos: [] },
+            "PAULA - BRUNO": { p1: "PAULA", p2: "BRUNO", keys: ["BRUNO", "ANDRE", "ANDRÉ", "PAULA ANDREA", "AZOCAR", "AZÓCAR", "PAULA"], nnasFijos: [] },
             "ALAN - DUPLA": { p1: "ALAN", p2: "S/N", keys: ["ALAN"], nnasFijos: [] }
         };
 
@@ -169,6 +174,22 @@
         } catch (e) {}
 
         let ultimosCasosDetectadosPorDupla = {};
+        let datosExcelMemoria = null;
+
+        // Comprobar al iniciar si ya hay un Excel almacenado en localStorage
+        window.addEventListener('DOMContentLoaded', () => {
+            poblarSelectorDuplas();
+            const excelGuardado = localStorage.getItem('excelDatosFAE_cache');
+            if (excelGuardado) {
+                try {
+                    datosExcelMemoria = JSON.parse(excelGuardado);
+                    document.getElementById('estadoArchivoGuardado').textContent = '✓ Hay un archivo Excel almacenado en memoria. Puedes generar el reporte directamente.';
+                    document.getElementById('btnBorrarExcel').style.display = 'inline-block';
+                } catch (e) {
+                    localStorage.removeItem('excelDatosFAE_cache');
+                }
+            }
+        });
 
         function poblarSelectorDuplas() {
             const select = document.getElementById('selectDuplaVista');
@@ -180,7 +201,6 @@
                 select.appendChild(opt);
             });
         }
-        window.addEventListener('DOMContentLoaded', poblarSelectorDuplas);
 
         const EVENTOS_VISITA = [
             "VISITA EFECTIVA EN DOMICILIO PARA MONITOR EO DE BIENESTAR DEL NNA EN LA FAMILIA DE ACOGI DA",
@@ -203,7 +223,8 @@
             "SESIÓN DE ENCUADRE CON NNA",
             "SESIÓN TERAPÉUTICA CON FAMILIA/ADULTO RELACIONADO Y NNA, FOCALIZANDO TRABAJO EN LA RELACIÓN DIÁDICA",
             "OBSERVACIÓN DEL BIENESTAR DEL NNA EN INTERACCIÓN CON FAMILIA/ADULTO RELACIONADO EN VISITA SUPERVISADA",
-            "CO-CONSTRUCCIÓN DE LA MODIFICACIÓN OR AJUSTES DEL O LOS PLANES DE INTERVENCIÓN INICIAL CON EL NNA"
+            "CO-CONSTRUCCIÓN DE LA MODIFICACIÓN O AJUSTES DEL O LOS PLANES DE INTERVENCIÓN INICIAL CON EL NNA",
+            "SESIÓN CON FAMILIA/ADULTO RELACIONADO, ABORDANDO ASPECTOS DE LA VINCULACIÓN CON EL NNA"
         ];
 
         const NOMBRES_MESES = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
@@ -277,6 +298,17 @@
             const msg = document.getElementById('msgConfigDuplas');
             msg.style.color = 'green';
             msg.textContent = '✓ Configuración guardada correctamente.';
+        }
+
+        function borrarExcelGuardado() {
+            if (confirm("¿Estás seguro de que deseas eliminar el archivo Excel almacenado en memoria?")) {
+                localStorage.removeItem('excelDatosFAE_cache');
+                datosExcelMemoria = null;
+                document.getElementById('estadoArchivoGuardado').textContent = '';
+                document.getElementById('btnBorrarExcel').style.display = 'none';
+                document.getElementById('inputExcel').value = '';
+                alert("Excel eliminado de la memoria.");
+            }
         }
 
         function getVal(obj, keyName) {
@@ -359,14 +391,33 @@
 
         function procesarArchivo() {
             const input = document.getElementById('inputExcel');
-            if (!input.files[0]) return alert("Sube el archivo Excel.");
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const workbook = XLSX.read(new Uint8Array(e.target.result), {type: 'array', cellDates: true});
-                const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
-                renderizarReporte(json);
-            };
-            reader.readAsArrayBuffer(input.files[0]);
+            
+            if (input.files && input.files[0]) {
+                // Si el usuario subió un archivo nuevo, lo leemos y guardamos en caché
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const workbook = XLSX.read(new Uint8Array(e.target.result), {type: 'array', cellDates: true});
+                        const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+                        
+                        // Guardar en localStorage para persistencia
+                        localStorage.setItem('excelDatosFAE_cache', JSON.stringify(json));
+                        datosExcelMemoria = json;
+                        document.getElementById('estadoArchivoGuardado').textContent = '✓ Archivo Excel cargado y guardado en memoria correctamente.';
+                        document.getElementById('btnBorrarExcel').style.display = 'inline-block';
+
+                        renderizarReporte(json);
+                    } catch (err) {
+                        alert("Error al leer el archivo Excel: " + err.message);
+                    }
+                };
+                reader.readAsArrayBuffer(input.files[0]);
+            } else if (datosExcelMemoria) {
+                // Si no subió archivo nuevo pero hay uno guardado en memoria, lo usamos directamente
+                renderizarReporte(datosExcelMemoria);
+            } else {
+                alert("Por favor, selecciona un archivo Excel primero.");
+            }
         }
 
         function renderizarReporte(datos) {
@@ -439,7 +490,6 @@
                     dData.nnaData[nna].profAtencion[resDupla.integrante] = true;
                     dData.individual[resDupla.integrante] = (dData.individual[resDupla.integrante] || 0) + 1;
 
-                    // Registrar día único si el evento es de negrita (atención especializada/psicológica)
                     if (EVENTOS_NEGRITA.includes(tipo)) {
                         dData.nnaData[nna].diasNegritaSet.add(fEv.toDateString());
                     }
