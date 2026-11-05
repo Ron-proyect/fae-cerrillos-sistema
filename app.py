@@ -42,6 +42,9 @@ COLOR_GRIS_FONDO = "#F8F9F9"
 
 SIS_HTML_FILE = "analitica_sis.html"
 
+# Tipo de archivo de las descargas a Excel
+MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
 CREDENTIALS = {
     "admin": {"pass": "cerrillos2026", "role": "admin", "name": "Administrador"},
     "bruno.ignacia": {"pass": "fae.cerrillos", "role": "user", "name": "Dupla 1"},
@@ -355,6 +358,25 @@ def generar_plantilla_base():
     df_plantilla = pd.DataFrame(columns=COLUMNAS_MATRIZ_MAESTRA)
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df_plantilla.to_excel(writer, index=False, sheet_name='Matriz_Maestra')
+    return output.getvalue()
+
+def generar_excel_listado(df, nombre_hoja="Listado"):
+    """Convierte un listado del Panel Global (DataFrame) en un Excel listo para descargar:
+    encabezados en negrita, ancho de columnas ajustado y N° correlativo si la tabla no lo trae."""
+    from openpyxl.styles import Font
+    nombre_hoja = nombre_hoja[:31]  # Excel no admite nombres de hoja de más de 31 caracteres
+    df_x = df.copy()
+    if "N°" not in df_x.columns:
+        df_x.insert(0, "N°", range(1, len(df_x) + 1))
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_x.to_excel(writer, index=False, sheet_name=nombre_hoja)
+        ws = writer.sheets[nombre_hoja]
+        for celda in ws[1]:
+            celda.font = Font(bold=True)
+        for columna in ws.columns:
+            largo = max(len(str(c.value)) if c.value is not None else 0 for c in columna)
+            ws.column_dimensions[columna[0].column_letter].width = min(largo + 3, 60)
     return output.getvalue()
 
 def generar_pdf_visual(prof_nombre, df_resumen, cumple_count, no_cumple_count):
@@ -1134,6 +1156,12 @@ if not df_c.empty:
                         df_pend_global = df_pend_global.sort_values(by="Venc. (3m)", ascending=True).reset_index(drop=True)
                         df_pend_global['Venc. (3m)'] = pd.to_datetime(df_pend_global['Venc. (3m)']).dt.strftime('%d-%m-%Y')
                         st.dataframe(df_pend_global, use_container_width=True, hide_index=True)
+                        st.download_button(
+                            "📥 Descargar informes pendientes (Excel)",
+                            generar_excel_listado(df_pend_global, "Informes pendientes"),
+                            f"Informes_pendientes_{hoy.strftime('%d-%m-%Y')}.xlsx",
+                            mime=MIME_XLSX, key="dl_excel_pendientes"
+                        )
                     else:
                         st.success("No hay informes pendientes: todos los casos están dentro del plazo.")
 
@@ -1147,6 +1175,12 @@ if not df_c.empty:
                         df_mas_18['Fecha Ingreso'] = pd.to_datetime(df_mas_18['Fecha Ingreso']).dt.strftime('%d-%m-%Y')
                         df_mas_18.insert(0, "N°", range(1, len(df_mas_18) + 1))
                         st.dataframe(df_mas_18, use_container_width=True, hide_index=True)
+                        st.download_button(
+                            "📥 Descargar largas permanencias (Excel)",
+                            generar_excel_listado(df_mas_18, "Largas permanencias"),
+                            f"Largas_permanencias_{hoy.strftime('%d-%m-%Y')}.xlsx",
+                            mime=MIME_XLSX, key="dl_excel_larga"
+                        )
                     else:
                         st.info("No hay casos en largas permanencias (más de 18 meses).")
 
@@ -1160,6 +1194,12 @@ if not df_c.empty:
                         df_diag['Fecha Ingreso'] = pd.to_datetime(df_diag['Fecha Ingreso']).dt.strftime('%d-%m-%Y')
                         df_diag.insert(0, "N°", range(1, len(df_diag) + 1))
                         st.dataframe(df_diag, use_container_width=True, hide_index=True)
+                        st.download_button(
+                            "📥 Descargar evaluación diagnóstica (Excel)",
+                            generar_excel_listado(df_diag, "Evaluación diagnóstica"),
+                            f"Evaluacion_diagnostica_{hoy.strftime('%d-%m-%Y')}.xlsx",
+                            mime=MIME_XLSX, key="dl_excel_diagnostico"
+                        )
                     else:
                         st.info("No hay casos en evaluación diagnóstica (90 días o menos en el programa).")
 
@@ -1176,6 +1216,15 @@ if not df_c.empty:
                         df_mes['Venc. (3m)'] = pd.to_datetime(df_mes['Venc. (3m)']).dt.strftime('%d-%m-%Y')
                         df_mes.insert(0, "N°", range(1, len(df_mes) + 1))
                         st.dataframe(df_mes, use_container_width=True, hide_index=True)
+                        # En el Excel se quitan los íconos de color de la columna "Estado" (quedan solo las palabras)
+                        df_mes_excel = df_mes.copy()
+                        df_mes_excel['Estado'] = df_mes_excel['Estado'].str.replace(r'^[^\w]+', '', regex=True)
+                        st.download_button(
+                            "📥 Descargar informes del mes (Excel)",
+                            generar_excel_listado(df_mes_excel, f"Informes {meses_es[hoy.month - 1]}"),
+                            f"Informes_a_enviar_{meses_es[hoy.month - 1]}_{hoy.year}.xlsx",
+                            mime=MIME_XLSX, key="dl_excel_mes"
+                        )
                     else:
                         st.success(f"No hay informes que venzan en {nombre_mes_actual}.")
 
