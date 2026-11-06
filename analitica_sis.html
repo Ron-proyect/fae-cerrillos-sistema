@@ -52,13 +52,18 @@
         th { background: #eee; height: 14px; font-size: 7px; font-weight: bold; }
         
         .col-nna { width: 130px; text-align: left !important; padding-left: 5px; font-weight: bold; white-space: normal; font-size: 7px; line-height: 8px; }
-        .col-nna-te { width: 120px; text-align: left !important; padding-left: 5px; font-weight: bold; white-space: normal; font-size: 8px; line-height: 10px; vertical-align: top; }
-        .nna-total-sub { display: block; font-weight: normal; color: #5D6D7E; font-size: 7px; margin-top: 2px; }
         .col-cant-te { width: 40px; font-weight: bold; }
-        .col-tipo-te { width: auto; text-align: left !important; padding-left: 5px; font-size: 7px; }
+        .col-tipo-te { width: auto; text-align: left !important; padding: 2px 5px; font-size: 7px; line-height: 9px; white-space: normal; }
         .tipo-negrita { font-weight: bold; color: #1a1a1a; }
-        .col-fechas-te { width: 130px; text-align: left !important; padding-left: 5px; color: #5D6D7E; }
-        .col-prof-te { width: 60px; text-align: left !important; padding-left: 5px; font-weight: bold; font-size: 6.5px; }
+        .col-fechas-te { width: 130px; text-align: left !important; padding: 2px 5px; color: #5D6D7E; font-size: 7px; line-height: 9px; white-space: normal; }
+        .col-prof-te { width: 60px; text-align: left !important; padding: 2px 5px; font-weight: bold; font-size: 6.5px; white-space: normal; }
+
+        /* Bloque por NNA para el detalle de eventos (sin rowspan, no se corta entre páginas) */
+        .nna-bloque { border: 1px solid #bbb; margin-bottom: 8px; page-break-inside: avoid; break-inside: avoid; }
+        .nna-bloque-head { background: #f0f4f8; padding: 4px 6px; border-bottom: 1px solid #bbb; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; font-size: 7px; color: #5D6D7E; }
+        .nna-bloque-head .nombre { font-size: 9px; font-weight: bold; color: #1a1a1a; }
+        .nna-bloque table { margin-bottom: 0; }
+        .nna-bloque th, .nna-bloque td { border-left: none; border-right: none; }
         
         .celda-activa { background: #eef9bf !important; color: var(--azul); font-weight: bold; }
         .celda-registro { background: #e3f2fd !important; color: #1976d2; font-weight: bold; }
@@ -499,24 +504,34 @@
                     for(let i=1; i<=31; i++) tablaFilasRegistro += `<td class="${dataN.diasRegistro[i] ? 'celda-registro' : ''}">${dataN.diasRegistro[i] || ''}</td>`;
                     tablaFilasRegistro += `<td class="col-total">${Object.values(dataN.diasRegistro).reduce((a,b)=>a+b,0)}</td></tr>`;
 
+                    // Detalle de tipos de evento: un bloque por NNA (sin rowspan)
                     if (incluirTipoEvento && dataN.total > 0) {
                         const tiposOrdenados = Object.keys(dataN.tiposEvento).sort((a, b) => dataN.tiposEvento[b].cantidad - dataN.tiposEvento[a].cantidad);
-                        tiposOrdenados.forEach((tipo, i) => {
+                        const filasTipos = tiposOrdenados.map(tipo => {
                             const infoEv = dataN.tiposEvento[tipo];
-                            tablaFilasTipoEvento += `<tr>
-                                ${i === 0 ? `<td class="col-nna-te" rowspan="${tiposOrdenados.length}">
-                                    ${n}
-                                    <span class="nna-total-sub">Total de intervenciones: ${dataN.total}</span>
-                                    <span class="nna-total-sub">Edad: ${dataN.edad !== null ? dataN.edad + ' años' : 's/d'}</span>
-                                    <span class="nna-total-sub">Permanencia: ${dataN.mesesPrograma !== null ? dataN.mesesPrograma + ' meses' : 's/d'}</span>
-                                    <span class="nna-total-sub" style="color:#1a1a1a; font-weight:bold;">Días atención especializada: ${diasAtencionPsicologica} días</span>
-                                </td>` : ''}
+                            return `<tr>
                                 <td class="col-tipo-te ${EVENTOS_NEGRITA.includes(tipo) ? 'tipo-negrita' : ''}">${tipo}</td>
                                 <td class="col-cant-te">${infoEv.cantidad}</td>
                                 <td class="col-fechas-te">${infoEv.fechas.join(', ')}</td>
                                 <td class="col-prof-te">${infoEv.profesionales.join(', ')}</td>
                             </tr>`;
-                        });
+                        }).join('');
+
+                        tablaFilasTipoEvento += `
+                        <div class="nna-bloque">
+                            <div class="nna-bloque-head">
+                                <span class="nombre">${n}</span>
+                                <span>Total de intervenciones: ${dataN.total}</span>
+                                <span>Edad: ${dataN.edad !== null ? dataN.edad + ' años' : 's/d'}</span>
+                                <span>Permanencia: ${dataN.mesesPrograma !== null ? dataN.mesesPrograma + ' meses' : 's/d'}</span>
+                                <span style="color:#1a1a1a; font-weight:bold;">Días atención especializada: ${diasAtencionPsicologica} días</span>
+                            </div>
+                            <table>
+                                <colgroup><col><col style="width:35px"><col style="width:130px"><col style="width:60px"></colgroup>
+                                <thead><tr><th>Tipo de Evento</th><th>Cant.</th><th>Fechas</th><th>Prof.</th></tr></thead>
+                                <tbody>${filasTipos}</tbody>
+                            </table>
+                        </div>`;
                     }
                     
                     const config = DUPLAS_INFO[dupla];
@@ -570,10 +585,7 @@
 
                     ${incluirTipoEvento ? `
                     <div class="tabla-titulo">8. Detalle de Tipos de Evento por NNA</div>
-                    <table>
-                        <thead><tr><th class="col-nna-te">NNA</th><th class="col-tipo-te">Tipo de Evento</th><th class="col-cant-te">Cant.</th><th class="col-fechas-te">Fechas</th><th class="col-prof-te">Prof.</th></tr></thead>
-                        <tbody>${tablaFilasTipoEvento}</tbody>
-                    </table>` : ''}
+                    ${tablaFilasTipoEvento}` : ''}
 
                     <button class="no-print btn-download-item" onclick="exportarPDFIndividual('${pageId}', '${dupla}')">📥 DESCARGAR PDF DE ESTE EQUIPO</button>`;
                 
@@ -613,27 +625,41 @@
             const noPrintElements = element.querySelectorAll('.no-print');
             noPrintElements.forEach(el => el.style.display = 'none');
 
+            // Quitar estilos de pantalla que generan páginas en blanco o desfases
+            const prev = {
+                margin: element.style.margin,
+                boxShadow: element.style.boxShadow,
+                pageBreakBefore: element.style.pageBreakBefore,
+                minHeight: element.style.minHeight
+            };
+            element.style.margin = '0';
+            element.style.boxShadow = 'none';
+            element.style.pageBreakBefore = 'avoid';
+            element.style.minHeight = 'auto';
+
             const opt = { 
                 margin: 0, 
                 filename: 'Reporte_' + nombreEquipo.replace(/ /g, '_') + '.pdf', 
                 image: { type: 'jpeg', quality: 0.98 }, 
                 html2canvas: { scale: 2.3, useCORS: true, logging: false, scrollY: 0, scrollX: 0 }, 
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-                pagebreak: { mode: 'avoid-all' }
+                pagebreak: {
+                    mode: ['css', 'legacy'],
+                    avoid: ['.nna-bloque', '.alert-box-red', '.alert-box-orange', '.chart-full-width', '.charts-half-grid', '.desfase-seccion', '.tabla-titulo']
+                }
             };
 
-            html2pdf().set(opt).from(element).save().then(() => {
-                noPrintElements.forEach(el => el.style.display = 'block');
+            return html2pdf().set(opt).from(element).save().then(() => {
+                noPrintElements.forEach(el => el.style.display = '');
+                Object.assign(element.style, prev);
             });
         }
 
         async function exportarPDFSeparados() {
             const secciones = document.querySelectorAll('.seccion-dupla');
             if (secciones.length === 0) return alert("Primero debe generar el reporte.");
-            for (let i = 0; i < secciones.length; i++) {
-                const nombreEquipo = secciones[i].getAttribute('data-equipo');
-                const pageId = secciones[i].id;
-                await exportarPDFIndividual(pageId, nombreEquipo);
+            for (const sec of secciones) {
+                await exportarPDFIndividual(sec.id, sec.getAttribute('data-equipo'));
             }
         }
     </script>
