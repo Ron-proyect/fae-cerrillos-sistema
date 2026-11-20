@@ -70,7 +70,7 @@ def obtener_iniciales(id_dupla):
 def formatear_opcion_dupla(id_dupla):
     """Para usar como format_func en selects/multiselects: si es una dupla (D1, D2...)
     muestra el id acompañado de sus iniciales (ej. 'D1 (B-I)'); si es otra opción
-    ('---', 'L', 'T Disp', 'SIN TERRENO') la deja tal cual."""
+    ('---', 'L', 'Enlace', 'T Disp', 'SIN TERRENO') la deja tal cual."""
     if id_dupla in NOMBRES_DUPLAS:
         return f"{id_dupla} ({obtener_iniciales(id_dupla)})"
     return id_dupla
@@ -79,12 +79,16 @@ COLORES_DUPLAS = {
     "D1": "#1E88E5", "D2": "#2E7D32", "D3": "#8E24AA", "D4": "#D84315",
     "D5": "#C2185B", "D6": "#00838F", "D7": "#E64A19", "---": "#CCCCCC",
     "T Disp": "#757575", "L": "#B0B0B0", "CERRADO": "#D32F2F",
-    "SIN TERRENO": "#F57C00"
+    "SIN TERRENO": "#F57C00", "Enlace": "#6A1B9A"
 }
 
 DUPLAS = list(NOMBRES_DUPLAS.keys())
 SALAS = ["S1", "S2", "S3"]
 DIAS_NOMBRE = ["Lun", "Mar", "Mié", "Jue", "Vie"]
+
+# Opciones extra que SOLO se pueden poner a mano desde el Editor Manual
+# (el generador automático nunca las asigna).
+OPCIONES_MANUALES_EXTRA = ["---", "L", "Enlace"]
 
 # RESTRICCIÓN: Teletrabajo (TT) - Bruno (D4) Lunes y Viernes
 TELETRABAJO = {
@@ -633,6 +637,21 @@ def _selector_mes(claves, key):
         st.session_state[key] = _mes_por_defecto(claves)
     return st.selectbox("📅 Seleccionar Mes:", options=claves, key=key, on_change=_marcar_manual)
 
+def _describir_bloqueo(f_str, info):
+    """Texto legible de un bloqueo para el selector de 'Quitar Bloqueo'.
+    Ej: 'Mié 12 · B2 10-11hrs a B4 12-13hrs · FERIADO'"""
+    bloques = info.get('bloques', [])
+    if len(bloques) == len(BLOQUES):
+        rango = "Día completo"
+    elif len(bloques) == 1:
+        rango = bloques[0]
+    elif bloques:
+        rango = f"{bloques[0]} a {bloques[-1]}"
+    else:
+        rango = "(sin bloques)"
+    motivo = info.get('motivo') or "sin motivo"
+    return f"{f_str} · {rango} · {motivo}"
+
 def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
     """Renderiza el módulo completo de gestión de salas dentro del contenedor actual
     (pensado para llamarse dentro de un 'with tab:').
@@ -737,6 +756,31 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
                         st.session_state.meses_data[mes_sel]['df'] = df
                         guardar_mes(supabase, mes_sel)
                         st.rerun()
+
+                # --- NUEVO: Quitar un bloqueo ya aplicado (para rectificar) ---
+                st.markdown("---")
+                st.subheader("♻️ Quitar Bloqueo")
+                bloqueos_activos = st.session_state.meses_data[mes_sel]['bloqueos']
+                if bloqueos_activos:
+                    fechas_bloqueadas = sorted(bloqueos_activos.keys(), key=lambda f: int(f.split(" ")[1]))
+                    f_quitar = st.selectbox(
+                        "Bloqueo a quitar:",
+                        fechas_bloqueadas,
+                        format_func=lambda f: _describir_bloqueo(f, bloqueos_activos[f]),
+                        key="salas_quitar_bloq_sel"
+                    )
+                    st.caption("⚠️ Al quitar el bloqueo se vuelve a generar el calendario del mes con los bloqueos restantes (las ediciones manuales de este mes se pierden).")
+                    if st.button("🗑️ Quitar Bloqueo", key="salas_quitar_bloq_aplicar"):
+                        del st.session_state.meses_data[mes_sel]['bloqueos'][f_quitar]
+                        df, rt = generar_calendario_mensual(m_data['año'], m_data['mes'], st.session_state.meses_data[mes_sel]['bloqueos'])
+                        st.session_state.meses_data[mes_sel]['df'] = df
+                        st.session_state.meses_data[mes_sel]['rt'] = rt
+                        guardar_mes(supabase, mes_sel)
+                        st.rerun()
+                else:
+                    st.caption("No hay bloqueos aplicados en este mes.")
+
+                st.markdown("---")
                 if st.button("🔄 Re-generar Planificación", key="salas_regenerar"):
                     st.session_state.meses_data[mes_sel]['bloqueos'] = {}
                     df, rt = generar_calendario_mensual(m_data['año'], m_data['mes'], {})
@@ -751,7 +795,8 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
                 edit_fecha = st.selectbox("Día:", df_edit["Fecha"].unique(), key="salas_edit_fecha")
                 edit_bloque = st.selectbox("Bloque:", BLOQUES, key="salas_edit_bloque")
                 edit_sala = st.selectbox("Sala:", SALAS, key="salas_edit_sala")
-                nueva_asig = st.selectbox("Dupla:", DUPLAS + ["---", "L"], format_func=formatear_opcion_dupla, key="salas_edit_dupla")
+                # "Enlace" solo se puede asignar desde acá (manualmente); el generador nunca la usa.
+                nueva_asig = st.selectbox("Dupla:", DUPLAS + OPCIONES_MANUALES_EXTRA, format_func=formatear_opcion_dupla, key="salas_edit_dupla")
                 if st.button("💾 Aplicar Cambio Manual", key="salas_edit_aplicar"):
                     idx = df_edit[(df_edit["Fecha"] == edit_fecha) & (df_edit["Bloque"] == edit_bloque) & (df_edit["Ubicación"] == edit_sala)].index
                     if not idx.empty:
