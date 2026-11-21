@@ -17,7 +17,7 @@ import random
 import streamlit as st
 import altair as alt
 from io import BytesIO
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 
 # Intentar importar icalendar de forma segura
 try:
@@ -70,7 +70,7 @@ def obtener_iniciales(id_dupla):
 def formatear_opcion_dupla(id_dupla):
     """Para usar como format_func en selects/multiselects: si es una dupla (D1, D2...)
     muestra el id acompañado de sus iniciales (ej. 'D1 (B-I)'); si es otra opción
-    ('---', 'L', 'Mariana', 'T Disp', 'SIN TERRENO') la deja tal cual."""
+    ('---', 'L', 'Mariana', 'T Disp', 'SIN TERRENO', 'Ninguno') la deja tal cual."""
     if id_dupla in NOMBRES_DUPLAS:
         return f"{id_dupla} ({obtener_iniciales(id_dupla)})"
     return id_dupla
@@ -86,13 +86,23 @@ DUPLAS = list(NOMBRES_DUPLAS.keys())
 SALAS = ["S1", "S2", "S3"]
 DIAS_NOMBRE = ["Lun", "Mar", "Mié", "Jue", "Vie"]
 
+# Opciones de terreno por media jornada. Se guardan en la columna T_Diario así:
+#   "Sin terreno AM"        -> sin terreno en la mañana (tarde sin asignar)
+#   "Sin terreno AM|D6"     -> sin terreno en la mañana y terreno de D6 en la tarde
+#   "Sin terreno PM|D6"     -> terreno de D6 en la mañana y sin terreno en la tarde
+TERRENO_SIN_AM = "Sin terreno AM"
+TERRENO_SIN_PM = "Sin terreno PM"
+
 # Opciones extra que SOLO se pueden poner a mano desde el Editor Manual de salas
 # (el generador automático nunca las asigna).
 OPCIONES_MANUALES_EXTRA = ["---", "L", "Mariana"]
 
 # Opciones extra que SOLO se pueden poner a mano desde el Editor de Terrenos
 # (el generador automático nunca las asigna).
-OPCIONES_TERRENO_EXTRA = ["T Disp", "SIN TERRENO", "Mariana"]
+OPCIONES_TERRENO_EXTRA = ["T Disp", "SIN TERRENO", TERRENO_SIN_AM, TERRENO_SIN_PM, "Mariana"]
+
+# Opciones para el terreno de la jornada complementaria (cuando se elige Sin terreno AM/PM)
+OPCIONES_TERRENO_COMPLEMENTARIO = ["Ninguno"] + DUPLAS + ["Mariana"]
 
 # RESTRICCIÓN: Teletrabajo (TT) - Bruno (D4) Lunes y Viernes
 TELETRABAJO = {
@@ -102,6 +112,66 @@ TELETRABAJO = {
     "Jue": ["D6", "D5", "D4"],
     "Vie": ["D2", "D5", "D7", "D1"]
 }
+
+# --- 1b. AYUDAS PARA EL TEXTO DEL TERRENO DIARIO ---
+def _etiqueta_asignado(t):
+    """'D6' -> 'D6(M-C)'; cualquier otra cosa ('Mariana') se deja tal cual."""
+    if t in NOMBRES_DUPLAS:
+        return f"{t}({obtener_iniciales(t)})"
+    return t
+
+def lineas_terreno(t, texto_sin_terreno="Sin terreno (bloqueo ≥4h)"):
+    """Convierte el valor guardado en T_Diario en una lista de líneas a mostrar.
+    Devuelve [(texto, clave_de_color), ...]; normalmente 1 línea, y 2 cuando el día
+    tiene una opción de media jornada (Sin terreno AM/PM) con terreno complementario."""
+    t = t or "T Disp"
+    base, _, comp = t.partition("|")
+    if base in (TERRENO_SIN_AM, TERRENO_SIN_PM):
+        es_am = (base == TERRENO_SIN_AM)
+        jornada_comp = "PM" if es_am else "AM"
+        lineas = [(base, "SIN TERRENO")]
+        if comp:
+            lineas.append((f"{_etiqueta_asignado(comp)} {jornada_comp}", comp))
+        if not es_am:
+            lineas.reverse()  # la jornada AM siempre va primero
+        return lineas
+    if base in ("T Disp", "CERRADO"):
+        return [("Disponible", base)]
+    if base == "SIN TERRENO":
+        return [(texto_sin_terreno, "SIN TERRENO")]
+    return [(_etiqueta_asignado(base), base)]
+
+def texto_terreno_plano(t):
+    """Versión en una sola línea (para descripciones de eventos de calendario)."""
+    return " / ".join(texto for texto, _ in lineas_terreno(t))
+
+def dupla_de_terreno(t):
+    """Devuelve el id de la dupla (D1..D7) que tiene terreno ese día, o None.
+    Considera tanto el terreno de día completo como el de la jornada complementaria."""
+    base, _, comp = (t or "").partition("|")
+    candidata = comp if comp else base
+    return candidata if candidata in DUPLAS else None
+
+def titulos_eventos_terreno(t):
+    """Títulos de los eventos de DÍA COMPLETO que se exportan a Google Calendar para el
+    terreno de un día. Devuelve una lista (vacía si ese día no tiene terreno que mostrar):
+      'D6'                  -> ['Terreno D6(M-C)']
+      'Mariana'             -> ['Terreno Mariana']
+      'Sin terreno AM|D6'   -> ['Sin terreno AM', 'Terreno D6(M-C) PM']
+      'Sin terreno PM|D6'   -> ['Terreno D6(M-C) AM', 'Sin terreno PM']
+      'T Disp' / 'CERRADO' / 'SIN TERRENO' (día completo) -> []"""
+    base, _, comp = (t or "").partition("|")
+    if base in (TERRENO_SIN_AM, TERRENO_SIN_PM):
+        es_am = (base == TERRENO_SIN_AM)
+        titulos = [base]
+        if comp:
+            titulos.append(f"Terreno {_etiqueta_asignado(comp)} {'PM' if es_am else 'AM'}")
+        if not es_am:
+            titulos.reverse()  # la jornada AM siempre va primero
+        return titulos
+    if base in DUPLAS or base == "Mariana":
+        return [f"Terreno {_etiqueta_asignado(base)}"]
+    return []
 
 # --- 2. VALIDACIÓN DE IMPORTACIÓN Y PERSISTENCIA (Supabase) ---
 def validar_e_importar_df(new_df_raw):
@@ -220,8 +290,14 @@ def calcular_metricas(df):
     horas_reales = df_horas.groupby("Dupla").size().to_dict()
     dobles_df = df[df["Dupla"].str.startswith("D")].groupby(['Fecha', 'Bloque', 'Dupla']).size().reset_index(name='count')
     dobles = dobles_df[dobles_df['count'] > 1].groupby('Dupla').size().to_dict()
-    df_terrenos = df[df["T_Diario"].str.startswith("D")].drop_duplicates(subset=['Fecha'])
-    terrenos = df_terrenos.groupby("T_Diario").size().to_dict()
+    # Terrenos: un registro por día. Considera también al terreno de la jornada
+    # complementaria (ej. "Sin terreno AM|D6" suma 1 terreno a D6).
+    df_terrenos = df.drop_duplicates(subset=['Fecha'])
+    terrenos = {}
+    for t in df_terrenos["T_Diario"]:
+        d_terr = dupla_de_terreno(t)
+        if d_terr:
+            terrenos[d_terr] = terrenos.get(d_terr, 0) + 1
     return totales_sala, horas_reales, dobles, terrenos
 
 # --- 4. LÓGICA DE FECHAS Y TERRENOS ---
@@ -542,7 +618,7 @@ def exportar_excel_visual(df_total, dict_bloqueos):
     fmt_header = workbook.add_format({'bold': True, 'bg_color': '#f1f3f5', 'border': 1, 'align': 'center'})
     fmt_summary_title = workbook.add_format({'bold': True, 'bg_color': '#1565C0', 'font_color': 'white', 'border': 1, 'align': 'center'})
     fmt_date = workbook.add_format({'bold': True, 'bg_color': '#ffffff', 'border': 1, 'align': 'center', 'font_size': 12})
-    fmt_terrain = workbook.add_format({'bold': True, 'font_color': '#d32f2f', 'border': 1, 'align': 'center', 'font_size': 10})
+    fmt_terrain = workbook.add_format({'bold': True, 'font_color': '#d32f2f', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True, 'font_size': 10})
     fmt_block = workbook.add_format({'bg_color': '#fafafa', 'border': 1, 'font_size': 9})
     fmt_closed = workbook.add_format({'bg_color': '#FFF3E0', 'font_color': '#E65100', 'bold': True, 'border': 1, 'align': 'center', 'valign': 'vcenter'})
     fmt_duplas = {d: workbook.add_format({'bg_color': '#e7f3ff' if d.startswith('D') else '#ffffff', 'font_color': color, 'bold': True, 'border': 1, 'align': 'center'}) for d, color in COLORES_DUPLAS.items()}
@@ -565,16 +641,12 @@ def exportar_excel_visual(df_total, dict_bloqueos):
             col_start = i * 4; fecha_act = [f for f in fechas if f.startswith(dia_nom)]
             if fecha_act:
                 current_f_str = fecha_act[0]; t_asignado = df_sem[df_sem["Fecha"] == current_f_str]["T_Diario"].iloc[0]
-                if t_asignado in ["T Disp", "CERRADO"]:
-                    label_t = "Disponible"
-                elif t_asignado == "SIN TERRENO":
-                    label_t = "Sin terreno (bloqueo)"
-                elif t_asignado in NOMBRES_DUPLAS:
-                    label_t = f"{t_asignado}({obtener_iniciales(t_asignado)})"
-                else:
-                    # Opciones manuales como "Mariana": se muestran tal cual
-                    label_t = t_asignado
-                worksheet.merge_range(curr_row, col_start, curr_row, col_start + 3, current_f_str, fmt_date); worksheet.merge_range(curr_row + 1, col_start, curr_row + 1, col_start + 3, f"T: {label_t}", fmt_terrain); worksheet.write(curr_row + 2, col_start, "Bloque", fmt_header); worksheet.write(curr_row + 2, col_start + 1, "S1", fmt_header); worksheet.write(curr_row + 2, col_start + 2, "S2", fmt_header); worksheet.write(curr_row + 2, col_start + 3, "S3", fmt_header)
+                # Una línea por jornada (ej. "T: Sin terreno AM" / "T: D6(M-C) PM")
+                lineas_t = lineas_terreno(t_asignado, "Sin terreno (bloqueo)")
+                texto_terreno_excel = "\n".join(f"T: {texto}" for texto, _ in lineas_t)
+                if len(lineas_t) > 1:
+                    worksheet.set_row(curr_row + 1, 30)
+                worksheet.merge_range(curr_row, col_start, curr_row, col_start + 3, current_f_str, fmt_date); worksheet.merge_range(curr_row + 1, col_start, curr_row + 1, col_start + 3, texto_terreno_excel, fmt_terrain); worksheet.write(curr_row + 2, col_start, "Bloque", fmt_header); worksheet.write(curr_row + 2, col_start + 1, "S1", fmt_header); worksheet.write(curr_row + 2, col_start + 2, "S2", fmt_header); worksheet.write(curr_row + 2, col_start + 3, "S3", fmt_header)
                 for b_idx, bloque in enumerate(BLOQUES):
                     r = curr_row + 3 + b_idx; worksheet.write(r, col_start, bloque, fmt_block)
                     if t_asignado == "CERRADO":
@@ -600,6 +672,8 @@ def exportar_excel_visual(df_total, dict_bloqueos):
 def exportar_icalendar(df_total, año, mes):
     if not ICAL_DISPONIBLE: return None
     cal = Calendar(); cal.add('prodid', '-//Gestión de Salas//Fundación DEM//ES'); cal.add('version', '2.0')
+
+    # --- Eventos de las salas (con horario, uno por bloque) ---
     for _, row in df_total.iterrows():
         dupla = row['Dupla']
         if dupla in ["---", "L"]: continue
@@ -611,8 +685,26 @@ def exportar_icalendar(df_total, año, mes):
         h_inicio, h_fin = HORARIOS_BLOQUES[row['Bloque']]
         event.add('dtstart', datetime(año, mes, dia_num, h_inicio, 0, 0))
         event.add('dtend', datetime(año, mes, dia_num, h_fin, 0, 0))
-        event.add('description', f"Sala: {sala}. Terreno: {row['T_Diario']}")
+        event.add('description', f"Sala: {sala}. Terreno: {texto_terreno_plano(row['T_Diario'])}")
         cal.add_component(event)
+
+    # --- Eventos de TERRENO (de día completo, uno por cada terreno del día) ---
+    # Los días "T Disp", "CERRADO" y "SIN TERRENO" (día completo) no generan evento.
+    for _, row in df_total.drop_duplicates(subset=['Fecha']).iterrows():
+        titulos = titulos_eventos_terreno(row['T_Diario'])
+        if not titulos: continue
+        dia_num = int(row['Fecha'].split(" ")[1])
+        fecha_evento = date(año, mes, dia_num)
+        for i, titulo in enumerate(titulos):
+            ev_t = Event()
+            ev_t.add('uid', f"terreno-{año}{mes:02d}{dia_num:02d}-{i}@gestion-salas")
+            ev_t.add('dtstamp', datetime.now())
+            ev_t.add('summary', titulo)
+            ev_t.add('dtstart', fecha_evento)
+            ev_t.add('dtend', fecha_evento + timedelta(days=1))  # en eventos de día completo el fin es el día siguiente
+            ev_t.add('transp', 'TRANSPARENT')  # no marca el día como "ocupado"
+            cal.add_component(ev_t)
+
     return cal.to_ical()
 
 # --- 8. INTERFAZ (para insertar dentro de una pestaña de app.py) ---
@@ -814,10 +906,27 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
                 st.markdown("---")
                 st.subheader("🚜 Editor de Terrenos")
                 edit_t_fecha = st.selectbox("Día Terreno:", df_edit["Fecha"].unique(), key="salas_edit_t_fecha")
-                # "Mariana" solo se puede asignar desde acá (manualmente); el generador nunca la usa.
+                # "Mariana", "Sin terreno AM" y "Sin terreno PM" solo se pueden asignar desde
+                # acá (manualmente); el generador nunca las usa.
                 nuevo_t = st.selectbox("Dupla Terreno:", DUPLAS + OPCIONES_TERRENO_EXTRA, format_func=formatear_opcion_dupla, key="salas_edit_t_dupla")
+
+                # Si se elige una media jornada sin terreno, se puede asignar además el
+                # terreno en la jornada complementaria (la otra mitad del día).
+                comp_t = "Ninguno"
+                if nuevo_t in (TERRENO_SIN_AM, TERRENO_SIN_PM):
+                    jornada_comp = "PM" if nuevo_t == TERRENO_SIN_AM else "AM"
+                    comp_t = st.selectbox(
+                        f"Terreno en la jornada complementaria ({jornada_comp}):",
+                        OPCIONES_TERRENO_COMPLEMENTARIO,
+                        format_func=formatear_opcion_dupla,
+                        key="salas_edit_t_comp"
+                    )
+
                 if st.button("💾 Cambiar Terreno", key="salas_edit_t_aplicar"):
-                    st.session_state.meses_data[mes_sel]['df'].loc[st.session_state.meses_data[mes_sel]['df']["Fecha"] == edit_t_fecha, "T_Diario"] = nuevo_t
+                    valor_terreno = nuevo_t
+                    if nuevo_t in (TERRENO_SIN_AM, TERRENO_SIN_PM) and comp_t != "Ninguno":
+                        valor_terreno = f"{nuevo_t}|{comp_t}"
+                    st.session_state.meses_data[mes_sel]['df'].loc[st.session_state.meses_data[mes_sel]['df']["Fecha"] == edit_t_fecha, "T_Diario"] = valor_terreno
                     guardar_mes(supabase, mes_sel)
                     st.rerun()
 
@@ -871,16 +980,9 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
                 t_asig = df_sem[df_sem["Fecha"] == cur_f]["T_Diario"].iloc[0]
                 with cols[i]:
                     st.markdown(f"<p class='d-header'>{cur_f}</p>", unsafe_allow_html=True)
-                    if t_asig in ["T Disp", "CERRADO"]:
-                        label_t = "Disponible"
-                    elif t_asig == "SIN TERRENO":
-                        label_t = "Sin terreno (bloqueo ≥4h)"
-                    elif t_asig in NOMBRES_DUPLAS:
-                        label_t = f"{t_asig}({obtener_iniciales(t_asig)})"
-                    else:
-                        # Opciones manuales como "Mariana": se muestran tal cual
-                        label_t = t_asig
-                    st.markdown(f"<p class='t-header' style='color:{COLORES_DUPLAS.get(t_asig, '#757575')}'>T: {label_t}</p>", unsafe_allow_html=True)
+                    # Una línea por jornada (ej. "T: Sin terreno AM" / "T: D6(M-C) PM")
+                    for texto_t, clave_color in lineas_terreno(t_asig):
+                        st.markdown(f"<p class='t-header' style='color:{COLORES_DUPLAS.get(clave_color, '#757575')}'>T: {texto_t}</p>", unsafe_allow_html=True)
                     st.markdown(render_tabla_dia(df_sem[df_sem["Fecha"] == cur_f], cur_f, m_data['bloqueos'], foco_duplas), unsafe_allow_html=True)
         st.markdown(render_resumen_semanal(df_sem, foco_duplas), unsafe_allow_html=True)
 
