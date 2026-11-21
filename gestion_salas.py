@@ -79,7 +79,7 @@ COLORES_DUPLAS = {
     "D1": "#1E88E5", "D2": "#2E7D32", "D3": "#8E24AA", "D4": "#D84315",
     "D5": "#C2185B", "D6": "#00838F", "D7": "#E64A19", "---": "#CCCCCC",
     "T Disp": "#757575", "L": "#B0B0B0", "CERRADO": "#D32F2F",
-    "SIN TERRENO": "#F57C00", "Mari": "#6A1B9A"
+    "SIN TERRENO": "#F57C00", "Mari": "#C9A000"  # Mari: amarillo mostaza
 }
 
 DUPLAS = list(NOMBRES_DUPLAS.keys())
@@ -569,7 +569,8 @@ def render_tabla_dia(df_dia, fecha_str, dict_bloqueos, foco_duplas=[]):
                 dupla = res["Dupla"].values[0] if not res.empty else "---"
                 texto_mostrar = obtener_iniciales(dupla) if dupla.startswith("D") else dupla
                 color_t = COLORES_DUPLAS.get(dupla, "#333")
-                bg_c = "#e7f3ff" if (not foco_duplas or dupla in foco_duplas) and dupla.startswith("D") else "#ffffff"
+                lleva_fondo = dupla.startswith("D") or dupla == "Mari"  # Mari usa el mismo fondo que las duplas
+                bg_c = "#e7f3ff" if (not foco_duplas or dupla in foco_duplas) and lleva_fondo else "#ffffff"
                 op = "1" if not foco_duplas or dupla in foco_duplas else "0.2"
                 html += f"<td style='{style_td_base} background-color: {bg_c}; color: {color_t}; font-weight: 800; opacity: {op};'>{texto_mostrar}</td>"
         html += "</tr>"
@@ -639,7 +640,7 @@ def exportar_excel_visual(df_total, dict_bloqueos):
     fmt_terrain = workbook.add_format({'bold': True, 'font_color': '#d32f2f', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True, 'font_size': 10})
     fmt_block = workbook.add_format({'bg_color': '#fafafa', 'border': 1, 'font_size': 9})
     fmt_closed = workbook.add_format({'bg_color': '#FFF3E0', 'font_color': '#E65100', 'bold': True, 'border': 1, 'align': 'center', 'valign': 'vcenter'})
-    fmt_duplas = {d: workbook.add_format({'bg_color': '#e7f3ff' if d.startswith('D') else '#ffffff', 'font_color': color, 'bold': True, 'border': 1, 'align': 'center'}) for d, color in COLORES_DUPLAS.items()}
+    fmt_duplas = {d: workbook.add_format({'bg_color': '#e7f3ff' if (d.startswith('D') or d == 'Mari') else '#ffffff', 'font_color': color, 'bold': True, 'border': 1, 'align': 'center'}) for d, color in COLORES_DUPLAS.items()}
     fmt_num = workbook.add_format({'border': 1, 'align': 'center'})
     curr_row = 0
     worksheet.merge_range(curr_row, 0, curr_row, 5, "RESUMEN MENSUAL DE CARGA", fmt_summary_title)
