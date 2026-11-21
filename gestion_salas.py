@@ -75,6 +75,13 @@ def formatear_opcion_dupla(id_dupla):
         return f"{id_dupla} ({obtener_iniciales(id_dupla)})"
     return id_dupla
 
+def formatear_opcion_complemento(opcion):
+    """format_func para la lista del terreno de la jornada complementaria:
+    igual que formatear_opcion_dupla, pero 'T Disp' se muestra como 'Terreno disponible'."""
+    if opcion == "T Disp":
+        return "Terreno disponible"
+    return formatear_opcion_dupla(opcion)
+
 COLORES_DUPLAS = {
     "D1": "#1E88E5", "D2": "#2E7D32", "D3": "#8E24AA", "D4": "#D84315",
     "D5": "#C2185B", "D6": "#00838F", "D7": "#E64A19", "---": "#CCCCCC",
@@ -89,6 +96,7 @@ DIAS_NOMBRE = ["Lun", "Mar", "Mié", "Jue", "Vie"]
 # Opciones de terreno por media jornada. Se guardan en la columna T_Diario así:
 #   "Sin terreno AM"        -> sin terreno en la mañana (tarde sin asignar)
 #   "Sin terreno AM|D6"     -> sin terreno en la mañana y terreno de D6 en la tarde
+#   "Sin terreno AM|T Disp" -> sin terreno en la mañana y terreno disponible en la tarde
 #   "Sin terreno PM|D6"     -> terreno de D6 en la mañana y sin terreno en la tarde
 TERRENO_SIN_AM = "Sin terreno AM"
 TERRENO_SIN_PM = "Sin terreno PM"
@@ -101,8 +109,9 @@ OPCIONES_MANUALES_EXTRA = ["---", "L", "Mariana"]
 # (el generador automático nunca las asigna).
 OPCIONES_TERRENO_EXTRA = ["T Disp", "SIN TERRENO", TERRENO_SIN_AM, TERRENO_SIN_PM, "Mariana"]
 
-# Opciones para el terreno de la jornada complementaria (cuando se elige Sin terreno AM/PM)
-OPCIONES_TERRENO_COMPLEMENTARIO = ["Ninguno"] + DUPLAS + ["Mariana"]
+# Opciones para el terreno de la jornada complementaria (cuando se elige Sin terreno AM/PM).
+# "T Disp" se muestra como "Terreno disponible".
+OPCIONES_TERRENO_COMPLEMENTARIO = ["Ninguno", "T Disp"] + DUPLAS + ["Mariana"]
 
 # RESTRICCIÓN: Teletrabajo (TT) - Bruno (D4) Lunes y Viernes
 TELETRABAJO = {
@@ -120,6 +129,12 @@ def _etiqueta_asignado(t):
         return f"{t}({obtener_iniciales(t)})"
     return t
 
+def _texto_complemento(comp, jornada):
+    """Texto de la línea de la jornada complementaria, ej. 'D6(M-C) PM' o 'Disponible PM'."""
+    if comp == "T Disp":
+        return f"Disponible {jornada}"
+    return f"{_etiqueta_asignado(comp)} {jornada}"
+
 def lineas_terreno(t, texto_sin_terreno="Sin terreno (bloqueo ≥4h)"):
     """Convierte el valor guardado en T_Diario en una lista de líneas a mostrar.
     Devuelve [(texto, clave_de_color), ...]; normalmente 1 línea, y 2 cuando el día
@@ -131,7 +146,7 @@ def lineas_terreno(t, texto_sin_terreno="Sin terreno (bloqueo ≥4h)"):
         jornada_comp = "PM" if es_am else "AM"
         lineas = [(base, "SIN TERRENO")]
         if comp:
-            lineas.append((f"{_etiqueta_asignado(comp)} {jornada_comp}", comp))
+            lineas.append((_texto_complemento(comp, jornada_comp), comp))
         if not es_am:
             lineas.reverse()  # la jornada AM siempre va primero
         return lineas
@@ -158,14 +173,19 @@ def titulos_eventos_terreno(t):
       'D6'                  -> ['Terreno D6(M-C)']
       'Mariana'             -> ['Terreno Mariana']
       'Sin terreno AM|D6'   -> ['Sin terreno AM', 'Terreno D6(M-C) PM']
+      'Sin terreno AM|T Disp' -> ['Sin terreno AM', 'Terreno disponible PM']
       'Sin terreno PM|D6'   -> ['Terreno D6(M-C) AM', 'Sin terreno PM']
       'T Disp' / 'CERRADO' / 'SIN TERRENO' (día completo) -> []"""
     base, _, comp = (t or "").partition("|")
     if base in (TERRENO_SIN_AM, TERRENO_SIN_PM):
         es_am = (base == TERRENO_SIN_AM)
+        jornada_comp = "PM" if es_am else "AM"
         titulos = [base]
         if comp:
-            titulos.append(f"Terreno {_etiqueta_asignado(comp)} {'PM' if es_am else 'AM'}")
+            if comp == "T Disp":
+                titulos.append(f"Terreno disponible {jornada_comp}")
+            else:
+                titulos.append(f"Terreno {_etiqueta_asignado(comp)} {jornada_comp}")
         if not es_am:
             titulos.reverse()  # la jornada AM siempre va primero
         return titulos
@@ -918,7 +938,7 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
                     comp_t = st.selectbox(
                         f"Terreno en la jornada complementaria ({jornada_comp}):",
                         OPCIONES_TERRENO_COMPLEMENTARIO,
-                        format_func=formatear_opcion_dupla,
+                        format_func=formatear_opcion_complemento,
                         key="salas_edit_t_comp"
                     )
 
