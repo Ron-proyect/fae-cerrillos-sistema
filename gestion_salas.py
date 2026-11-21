@@ -70,7 +70,7 @@ def obtener_iniciales(id_dupla):
 def formatear_opcion_dupla(id_dupla):
     """Para usar como format_func en selects/multiselects: si es una dupla (D1, D2...)
     muestra el id acompañado de sus iniciales (ej. 'D1 (B-I)'); si es otra opción
-    ('---', 'L', 'Mariana', 'T Disp', 'SIN TERRENO', 'Ninguno') la deja tal cual."""
+    ('---', 'L', 'Mari', 'T Disp', 'SIN TERRENO', 'Ninguno') la deja tal cual."""
     if id_dupla in NOMBRES_DUPLAS:
         return f"{id_dupla} ({obtener_iniciales(id_dupla)})"
     return id_dupla
@@ -79,7 +79,7 @@ COLORES_DUPLAS = {
     "D1": "#1E88E5", "D2": "#2E7D32", "D3": "#8E24AA", "D4": "#D84315",
     "D5": "#C2185B", "D6": "#00838F", "D7": "#E64A19", "---": "#CCCCCC",
     "T Disp": "#757575", "L": "#B0B0B0", "CERRADO": "#D32F2F",
-    "SIN TERRENO": "#F57C00", "Mariana": "#6A1B9A"
+    "SIN TERRENO": "#F57C00", "Mari": "#6A1B9A"
 }
 
 DUPLAS = list(NOMBRES_DUPLAS.keys())
@@ -96,14 +96,14 @@ TERRENO_SIN_PM = "Sin terreno PM"
 
 # Opciones extra que SOLO se pueden poner a mano desde el Editor Manual de salas
 # (el generador automático nunca las asigna).
-OPCIONES_MANUALES_EXTRA = ["---", "L", "Mariana"]
+OPCIONES_MANUALES_EXTRA = ["---", "L", "Mari"]
 
 # Opciones extra que SOLO se pueden poner a mano desde el Editor de Terrenos
 # (el generador automático nunca las asigna).
-OPCIONES_TERRENO_EXTRA = ["T Disp", "SIN TERRENO", TERRENO_SIN_AM, TERRENO_SIN_PM, "Mariana"]
+OPCIONES_TERRENO_EXTRA = ["T Disp", "SIN TERRENO", TERRENO_SIN_AM, TERRENO_SIN_PM, "Mari"]
 
 # Opciones para el terreno de la jornada complementaria (cuando se elige Sin terreno AM/PM).
-OPCIONES_TERRENO_COMPLEMENTARIO = ["Ninguno", "T Disp"] + DUPLAS + ["Mariana"]
+OPCIONES_TERRENO_COMPLEMENTARIO = ["Ninguno", "T Disp"] + DUPLAS + ["Mari"]
 
 # RESTRICCIÓN: Teletrabajo (TT) - Bruno (D4) Lunes y Viernes
 TELETRABAJO = {
@@ -116,7 +116,7 @@ TELETRABAJO = {
 
 # --- 1b. AYUDAS PARA EL TEXTO DEL TERRENO DIARIO ---
 def _etiqueta_asignado(t):
-    """'D6' -> 'D6(M-C)'; cualquier otra cosa ('Mariana') se deja tal cual."""
+    """'D6' -> 'D6(M-C)'; cualquier otra cosa ('Mari') se deja tal cual."""
     if t in NOMBRES_DUPLAS:
         return f"{t}({obtener_iniciales(t)})"
     return t
@@ -161,7 +161,7 @@ def titulos_eventos_terreno(t):
     """Títulos de los eventos de DÍA COMPLETO que se exportan a Google Calendar para el
     terreno de un día. Devuelve una lista (vacía si ese día no tiene terreno que mostrar):
       'D6'                    -> ['Terreno D6(M-C)']
-      'Mariana'               -> ['Terreno Mariana']
+      'Mari'                  -> ['Terreno Mari']
       'Sin terreno AM|D6'     -> ['Sin terreno AM', 'Terreno D6(M-C) PM']
       'Sin terreno AM|T Disp' -> ['Sin terreno AM', 'T Disp PM']
       'Sin terreno PM|D6'     -> ['Terreno D6(M-C) AM', 'Sin terreno PM']
@@ -179,7 +179,7 @@ def titulos_eventos_terreno(t):
         if not es_am:
             titulos.reverse()  # la jornada AM siempre va primero
         return titulos
-    if base in DUPLAS or base == "Mariana":
+    if base in DUPLAS or base == "Mari":
         return [f"Terreno {_etiqueta_asignado(base)}"]
     return []
 
@@ -217,6 +217,10 @@ def validar_e_importar_df(new_df_raw):
 
     df["T_Diario"] = df["T_Diario"].fillna("T Disp").astype(str)
     df["Dupla"] = df["Dupla"].fillna("---").astype(str)
+
+    # Migración: archivos antiguos que aún traigan "Mariana" pasan a "Mari"
+    df["Dupla"] = df["Dupla"].replace("Mariana", "Mari")
+    df["T_Diario"] = df["T_Diario"].str.replace("Mariana", "Mari", regex=False)
 
     # Cada combinación Fecha+Bloque+Ubicación debe ser única (una sola asignación por celda)
     duplicados = df.duplicated(subset=["Fecha", "Bloque", "Ubicación"]).sum()
@@ -279,6 +283,10 @@ def cargar_datos(supabase):
             id_m = fila["mes_id"]
             registro = dict(fila["datos"])
             registro['df'] = pd.DataFrame(registro['df'])
+            # Migración: "Mariana" pasó a llamarse "Mari" (salas y terreno)
+            if not registro['df'].empty:
+                registro['df']['Dupla'] = registro['df']['Dupla'].replace("Mariana", "Mari")
+                registro['df']['T_Diario'] = registro['df']['T_Diario'].astype(str).str.replace("Mariana", "Mari", regex=False)
             datos_cargados[id_m] = registro
         return datos_cargados
     except Exception as e:
@@ -904,7 +912,7 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
                 edit_fecha = st.selectbox("Día:", df_edit["Fecha"].unique(), key="salas_edit_fecha")
                 edit_bloque = st.selectbox("Bloque:", BLOQUES, key="salas_edit_bloque")
                 edit_sala = st.selectbox("Sala:", SALAS, key="salas_edit_sala")
-                # "Mariana" solo se puede asignar desde acá (manualmente); el generador nunca la usa.
+                # "Mari" solo se puede asignar desde acá (manualmente); el generador nunca la usa.
                 nueva_asig = st.selectbox("Dupla:", DUPLAS + OPCIONES_MANUALES_EXTRA, format_func=formatear_opcion_dupla, key="salas_edit_dupla")
                 if st.button("💾 Aplicar Cambio Manual", key="salas_edit_aplicar"):
                     idx = df_edit[(df_edit["Fecha"] == edit_fecha) & (df_edit["Bloque"] == edit_bloque) & (df_edit["Ubicación"] == edit_sala)].index
@@ -916,7 +924,7 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
                 st.markdown("---")
                 st.subheader("🚜 Editor de Terrenos")
                 edit_t_fecha = st.selectbox("Día Terreno:", df_edit["Fecha"].unique(), key="salas_edit_t_fecha")
-                # "Mariana", "Sin terreno AM" y "Sin terreno PM" solo se pueden asignar desde
+                # "Mari", "Sin terreno AM" y "Sin terreno PM" solo se pueden asignar desde
                 # acá (manualmente); el generador nunca las usa.
                 nuevo_t = st.selectbox("Dupla Terreno:", DUPLAS + OPCIONES_TERRENO_EXTRA, format_func=formatear_opcion_dupla, key="salas_edit_t_dupla")
 
