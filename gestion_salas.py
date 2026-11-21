@@ -70,7 +70,7 @@ def obtener_iniciales(id_dupla):
 def formatear_opcion_dupla(id_dupla):
     """Para usar como format_func en selects/multiselects: si es una dupla (D1, D2...)
     muestra el id acompañado de sus iniciales (ej. 'D1 (B-I)'); si es otra opción
-    ('---', 'L', 'Enlace', 'T Disp', 'SIN TERRENO') la deja tal cual."""
+    ('---', 'L', 'Mariana', 'T Disp', 'SIN TERRENO') la deja tal cual."""
     if id_dupla in NOMBRES_DUPLAS:
         return f"{id_dupla} ({obtener_iniciales(id_dupla)})"
     return id_dupla
@@ -79,16 +79,20 @@ COLORES_DUPLAS = {
     "D1": "#1E88E5", "D2": "#2E7D32", "D3": "#8E24AA", "D4": "#D84315",
     "D5": "#C2185B", "D6": "#00838F", "D7": "#E64A19", "---": "#CCCCCC",
     "T Disp": "#757575", "L": "#B0B0B0", "CERRADO": "#D32F2F",
-    "SIN TERRENO": "#F57C00", "Enlace": "#6A1B9A"
+    "SIN TERRENO": "#F57C00", "Mariana": "#6A1B9A"
 }
 
 DUPLAS = list(NOMBRES_DUPLAS.keys())
 SALAS = ["S1", "S2", "S3"]
 DIAS_NOMBRE = ["Lun", "Mar", "Mié", "Jue", "Vie"]
 
-# Opciones extra que SOLO se pueden poner a mano desde el Editor Manual
+# Opciones extra que SOLO se pueden poner a mano desde el Editor Manual de salas
 # (el generador automático nunca las asigna).
-OPCIONES_MANUALES_EXTRA = ["---", "L", "Enlace"]
+OPCIONES_MANUALES_EXTRA = ["---", "L", "Mariana"]
+
+# Opciones extra que SOLO se pueden poner a mano desde el Editor de Terrenos
+# (el generador automático nunca las asigna).
+OPCIONES_TERRENO_EXTRA = ["T Disp", "SIN TERRENO", "Mariana"]
 
 # RESTRICCIÓN: Teletrabajo (TT) - Bruno (D4) Lunes y Viernes
 TELETRABAJO = {
@@ -565,8 +569,11 @@ def exportar_excel_visual(df_total, dict_bloqueos):
                     label_t = "Disponible"
                 elif t_asignado == "SIN TERRENO":
                     label_t = "Sin terreno (bloqueo)"
-                else:
+                elif t_asignado in NOMBRES_DUPLAS:
                     label_t = f"{t_asignado}({obtener_iniciales(t_asignado)})"
+                else:
+                    # Opciones manuales como "Mariana": se muestran tal cual
+                    label_t = t_asignado
                 worksheet.merge_range(curr_row, col_start, curr_row, col_start + 3, current_f_str, fmt_date); worksheet.merge_range(curr_row + 1, col_start, curr_row + 1, col_start + 3, f"T: {label_t}", fmt_terrain); worksheet.write(curr_row + 2, col_start, "Bloque", fmt_header); worksheet.write(curr_row + 2, col_start + 1, "S1", fmt_header); worksheet.write(curr_row + 2, col_start + 2, "S2", fmt_header); worksheet.write(curr_row + 2, col_start + 3, "S3", fmt_header)
                 for b_idx, bloque in enumerate(BLOQUES):
                     r = curr_row + 3 + b_idx; worksheet.write(r, col_start, bloque, fmt_block)
@@ -757,7 +764,7 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
                         guardar_mes(supabase, mes_sel)
                         st.rerun()
 
-                # --- NUEVO: Quitar un bloqueo ya aplicado (para rectificar) ---
+                # --- Quitar un bloqueo ya aplicado (para rectificar) ---
                 st.markdown("---")
                 st.subheader("♻️ Quitar Bloqueo")
                 bloqueos_activos = st.session_state.meses_data[mes_sel]['bloqueos']
@@ -795,7 +802,7 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
                 edit_fecha = st.selectbox("Día:", df_edit["Fecha"].unique(), key="salas_edit_fecha")
                 edit_bloque = st.selectbox("Bloque:", BLOQUES, key="salas_edit_bloque")
                 edit_sala = st.selectbox("Sala:", SALAS, key="salas_edit_sala")
-                # "Enlace" solo se puede asignar desde acá (manualmente); el generador nunca la usa.
+                # "Mariana" solo se puede asignar desde acá (manualmente); el generador nunca la usa.
                 nueva_asig = st.selectbox("Dupla:", DUPLAS + OPCIONES_MANUALES_EXTRA, format_func=formatear_opcion_dupla, key="salas_edit_dupla")
                 if st.button("💾 Aplicar Cambio Manual", key="salas_edit_aplicar"):
                     idx = df_edit[(df_edit["Fecha"] == edit_fecha) & (df_edit["Bloque"] == edit_bloque) & (df_edit["Ubicación"] == edit_sala)].index
@@ -807,7 +814,8 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
                 st.markdown("---")
                 st.subheader("🚜 Editor de Terrenos")
                 edit_t_fecha = st.selectbox("Día Terreno:", df_edit["Fecha"].unique(), key="salas_edit_t_fecha")
-                nuevo_t = st.selectbox("Dupla Terreno:", DUPLAS + ["T Disp", "SIN TERRENO"], format_func=formatear_opcion_dupla, key="salas_edit_t_dupla")
+                # "Mariana" solo se puede asignar desde acá (manualmente); el generador nunca la usa.
+                nuevo_t = st.selectbox("Dupla Terreno:", DUPLAS + OPCIONES_TERRENO_EXTRA, format_func=formatear_opcion_dupla, key="salas_edit_t_dupla")
                 if st.button("💾 Cambiar Terreno", key="salas_edit_t_aplicar"):
                     st.session_state.meses_data[mes_sel]['df'].loc[st.session_state.meses_data[mes_sel]['df']["Fecha"] == edit_t_fecha, "T_Diario"] = nuevo_t
                     guardar_mes(supabase, mes_sel)
@@ -867,8 +875,11 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
                         label_t = "Disponible"
                     elif t_asig == "SIN TERRENO":
                         label_t = "Sin terreno (bloqueo ≥4h)"
-                    else:
+                    elif t_asig in NOMBRES_DUPLAS:
                         label_t = f"{t_asig}({obtener_iniciales(t_asig)})"
+                    else:
+                        # Opciones manuales como "Mariana": se muestran tal cual
+                        label_t = t_asig
                     st.markdown(f"<p class='t-header' style='color:{COLORES_DUPLAS.get(t_asig, '#757575')}'>T: {label_t}</p>", unsafe_allow_html=True)
                     st.markdown(render_tabla_dia(df_sem[df_sem["Fecha"] == cur_f], cur_f, m_data['bloqueos'], foco_duplas), unsafe_allow_html=True)
         st.markdown(render_resumen_semanal(df_sem, foco_duplas), unsafe_allow_html=True)
