@@ -99,8 +99,16 @@ TERRENO_SIN_PM = "Sin terreno PM"
 TERRENO_TDISP_AM = "T Disp AM"
 TERRENO_TDISP_PM = "T Disp PM"
 
-# Todas las opciones de media jornada (misma lógica para las cuatro)
-TERRENOS_MEDIA_JORNADA = (TERRENO_SIN_AM, TERRENO_SIN_PM, TERRENO_TDISP_AM, TERRENO_TDISP_PM)
+#   "D3 AM|D7"              -> terreno de D3 en la mañana y terreno de D7 en la tarde
+#   "D7 PM|D3"              -> (equivale al anterior) D3 en la mañana y D7 en la tarde
+#   "D3 AM"                 -> terreno de D3 solo en la mañana (tarde sin asignar)
+
+# Quién puede ocupar una media jornada: "Sin terreno", "T Disp", una dupla o Mari
+ASIGNADOS_MEDIA_JORNADA = ("Sin terreno", "T Disp") + tuple(DUPLAS) + ("Mari",)
+
+# Todas las opciones de media jornada, ej. "Sin terreno AM", "T Disp PM", "D3 AM", "Mari PM"
+# (misma lógica para todas)
+TERRENOS_MEDIA_JORNADA = tuple(f"{a} {j}" for a in ASIGNADOS_MEDIA_JORNADA for j in ("AM", "PM"))
 
 # Opciones extra que SOLO se pueden poner a mano desde el Editor Manual de salas
 # (el generador automático nunca las asigna).
@@ -123,6 +131,15 @@ TELETRABAJO = {
 }
 
 # --- 1b. AYUDAS PARA EL TEXTO DEL TERRENO DIARIO ---
+def separar_media_jornada(base):
+    """'D3 AM' -> ('D3', 'AM'); 'Sin terreno PM' -> ('Sin terreno', 'PM').
+    Si no es una media jornada válida devuelve (None, None)."""
+    if base.endswith(" AM") or base.endswith(" PM"):
+        asignado = base[:-3]
+        if asignado in ASIGNADOS_MEDIA_JORNADA:
+            return asignado, base[-2:]
+    return None, None
+
 def _etiqueta_asignado(t):
     """'D6' -> 'D6(M-C)'; cualquier otra cosa ('Mari') se deja tal cual."""
     if t in NOMBRES_DUPLAS:
@@ -142,8 +159,13 @@ def lineas_terreno(t, texto_sin_terreno="Sin terreno (bloqueo ≥4h)"):
     if base in TERRENOS_MEDIA_JORNADA:
         es_am = base.endswith("AM")
         jornada_comp = "PM" if es_am else "AM"
-        clave_base = "SIN TERRENO" if base.startswith("Sin terreno") else "T Disp"
-        lineas = [(base, clave_base)]
+        asignado_base, _ = separar_media_jornada(base)
+        clave_base = "SIN TERRENO" if asignado_base == "Sin terreno" else asignado_base
+        if asignado_base in ("Sin terreno", "T Disp"):
+            texto_base = base
+        else:
+            texto_base = f"{_etiqueta_asignado(asignado_base)} {base[-2:]}"  # ej. 'D3(F-T) AM'
+        lineas = [(texto_base, clave_base)]
         if comp:
             lineas.append((_texto_complemento(comp, jornada_comp), comp))
         if not es_am:
@@ -159,12 +181,16 @@ def texto_terreno_plano(t):
     """Versión en una sola línea (para descripciones de eventos de calendario)."""
     return " / ".join(texto for texto, _ in lineas_terreno(t))
 
-def dupla_de_terreno(t):
-    """Devuelve el id de la dupla (D1..D7) que tiene terreno ese día, o None.
-    Considera tanto el terreno de día completo como el de la jornada complementaria."""
+def duplas_de_terreno(t):
+    """Devuelve la lista de duplas (D1..D7) que tienen terreno ese día: 0, 1 o 2
+    (una por jornada cuando el día está dividido en AM/PM, ej. 'D3 AM|D7' -> ['D3', 'D7'])."""
     base, _, comp = (t or "").partition("|")
-    candidata = comp if comp else base
-    return candidata if candidata in DUPLAS else None
+    asignado_base, _ = separar_media_jornada(base)
+    resultado = []
+    for candidata in (asignado_base if asignado_base else base, comp):
+        if candidata in DUPLAS and candidata not in resultado:
+            resultado.append(candidata)
+    return resultado
 
 def titulos_eventos_terreno(t):
     """Títulos de los eventos de DÍA COMPLETO que se exportan a Google Calendar para el
@@ -179,7 +205,11 @@ def titulos_eventos_terreno(t):
     if base in TERRENOS_MEDIA_JORNADA:
         es_am = base.endswith("AM")
         jornada_comp = "PM" if es_am else "AM"
-        titulos = [base]
+        asignado_base, _ = separar_media_jornada(base)
+        if asignado_base in ("Sin terreno", "T Disp"):
+            titulos = [base]
+        else:
+            titulos = [f"Terreno {_etiqueta_asignado(asignado_base)} {base[-2:]}"]  # ej. 'Terreno D3(F-T) AM'
         if comp:
             if comp == "T Disp":
                 titulos.append(f"T Disp {jornada_comp}")
@@ -322,8 +352,7 @@ def calcular_metricas(df):
     df_terrenos = df.drop_duplicates(subset=['Fecha'])
     terrenos = {}
     for t in df_terrenos["T_Diario"]:
-        d_terr = dupla_de_terreno(t)
-        if d_terr:
+        for d_terr in duplas_de_terreno(t):
             terrenos[d_terr] = terrenos.get(d_terr, 0) + 1
     return totales_sala, horas_reales, dobles, terrenos
 
@@ -938,15 +967,21 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
                 # acá (manualmente); el generador nunca las usa.
                 nuevo_t = st.selectbox("Dupla Terreno:", DUPLAS + OPCIONES_TERRENO_EXTRA, format_func=formatear_opcion_dupla, key="salas_edit_t_dupla")
 
-                # Si se elige una media jornada sin terreno, se puede asignar además el
-                # terreno en la jornada complementaria (la otra mitad del día).
+                # Una dupla (o Mari) también se puede asignar solo a media jornada (ej. D3 AM y D7 PM).
+                base_t = nuevo_t
+                if nuevo_t in DUPLAS + ["Mari"]:
+                    jornada_t = st.radio("Jornada:", ["Día completo", "Solo AM", "Solo PM"], horizontal=True, key="salas_edit_t_jornada")
+                    if jornada_t != "Día completo":
+                        base_t = f"{nuevo_t} {jornada_t[-2:]}"
+
+                # Si se elige una media jornada, se puede asignar además el terreno en la
+                # jornada complementaria (la otra mitad del día).
                 comp_t = "Ninguno"
-                if nuevo_t in TERRENOS_MEDIA_JORNADA:
-                    jornada_comp = "PM" if nuevo_t.endswith("AM") else "AM"
-                    opciones_comp = OPCIONES_TERRENO_COMPLEMENTARIO
-                    if nuevo_t in (TERRENO_TDISP_AM, TERRENO_TDISP_PM):
-                        # T Disp en una jornada + T Disp en la otra sería lo mismo que "T Disp" de día completo
-                        opciones_comp = [o for o in OPCIONES_TERRENO_COMPLEMENTARIO if o != "T Disp"]
+                if base_t in TERRENOS_MEDIA_JORNADA:
+                    jornada_comp = "PM" if base_t.endswith("AM") else "AM"
+                    asignado_base, _ = separar_media_jornada(base_t)
+                    # Repetir lo mismo en las dos jornadas equivale al día completo, por eso se excluye
+                    opciones_comp = [o for o in OPCIONES_TERRENO_COMPLEMENTARIO if o != asignado_base]
                     comp_t = st.selectbox(
                         f"Terreno en la jornada complementaria ({jornada_comp}):",
                         opciones_comp,
@@ -955,9 +990,9 @@ def render_gestion_salas(supabase, es_admin=True, dupla_usuario=None):
                     )
 
                 if st.button("💾 Cambiar Terreno", key="salas_edit_t_aplicar"):
-                    valor_terreno = nuevo_t
-                    if nuevo_t in TERRENOS_MEDIA_JORNADA and comp_t != "Ninguno":
-                        valor_terreno = f"{nuevo_t}|{comp_t}"
+                    valor_terreno = base_t
+                    if base_t in TERRENOS_MEDIA_JORNADA and comp_t != "Ninguno":
+                        valor_terreno = f"{base_t}|{comp_t}"
                     st.session_state.meses_data[mes_sel]['df'].loc[st.session_state.meses_data[mes_sel]['df']["Fecha"] == edit_t_fecha, "T_Diario"] = valor_terreno
                     guardar_mes(supabase, mes_sel)
                     st.rerun()
